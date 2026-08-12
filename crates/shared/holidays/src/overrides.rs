@@ -38,23 +38,12 @@ pub type Overrides = BTreeMap<NaiveDate, Override>;
 /// The seed written when no file exists, which is also the documentation:
 /// nobody reads a man page for a file they are about to edit, but they do read
 /// the file.
-pub const TEMPLATE: &str = r#"# Días que la API de feriados no conoce, o que decidimos distinto.
-#
-# Se lee en cada poll, así que un cambio acá tiene efecto en el próximo tick:
-# no hace falta rebuild ni reiniciar nada.
-#
-# kind:
-#   holiday      feriado — no se trabaja, no suma a lo esperado
-#   non-working  día no laborable (Jueves Santo y compañía) — no se trabaja
-#   bridge       puente turístico
-#   work         se trabaja, aunque el feriado nacional diga otra cosa
-#
-# [days]
-# "2026-04-01" = { kind = "non-working", name = "Jueves Santo" }
-# "2026-03-23" = { kind = "work" }                  # el puente se trabaja
-
-[days]
-"#;
+///
+/// A file rather than a string literal because the home-manager module seeds
+/// the same content at activation, and Nix cannot read a Rust const. One file,
+/// two readers, no chance of the two drifting into documenting different
+/// spellings of `kind`.
+pub const TEMPLATE: &str = include_str!("../overrides.template.toml");
 
 /// Read the file. A missing one is an empty set, not an error — the common case
 /// is a machine where nothing has ever needed overriding.

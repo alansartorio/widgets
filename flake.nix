@@ -112,5 +112,53 @@
           ];
         };
       }
-    );
+    )
+    // {
+      # Per service *and* an aggregate, because the two are wanted in different
+      # places: a host takes `default` and flips three `enable`s, while a module
+      # that only wants timers can say so without declaring options for two
+      # things it will never turn on.
+      #
+      # Each closes over `self` so the modules can default their own packages —
+      # which is the practical payoff of one flake over four. Nothing importing
+      # these has to know what a package is called, or hand the same three
+      # derivations across a repo boundary.
+      homeManagerModules = {
+        timers = import ./nix/modules/timers.nix {
+          flavour = "hm";
+          inherit self;
+        };
+        kimai = import ./nix/modules/kimai.nix {
+          flavour = "hm";
+          inherit self;
+        };
+        calendar = import ./nix/modules/calendar.nix {
+          flavour = "hm";
+          inherit self;
+        };
+        default = import ./nix/hm.nix { inherit self; };
+      };
+
+      nixosModules = {
+        # No home-manager flavour: the daemon runs as its own system user, which
+        # is the point of it.
+        claude-usage = import ./nix/modules/claude-usage.nix {
+          flavour = "nixos";
+          inherit self;
+        };
+        timers = import ./nix/modules/timers.nix {
+          flavour = "nixos";
+          inherit self;
+        };
+        kimai = import ./nix/modules/kimai.nix {
+          flavour = "nixos";
+          inherit self;
+        };
+        calendar = import ./nix/modules/calendar.nix {
+          flavour = "nixos";
+          inherit self;
+        };
+        default = import ./nix/nixos.nix { inherit self; };
+      };
+    };
 }

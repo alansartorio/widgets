@@ -1,0 +1,16 @@
+# Días que la API de feriados no conoce, o que decidimos distinto.
+#
+# Se lee en cada poll, así que un cambio acá tiene efecto en el próximo tick:
+# no hace falta rebuild ni reiniciar nada.
+#
+# kind:
+#   holiday      feriado — no se trabaja, no suma a lo esperado
+#   non-working  día no laborable (Jueves Santo y compañía) — no se trabaja
+#   bridge       puente turístico
+#   work         se trabaja, aunque el feriado nacional diga otra cosa
+#
+# [days]
+# "2026-04-01" = { kind = "non-working", name = "Jueves Santo" }
+# "2026-03-23" = { kind = "work" }                  # el puente se trabaja
+
+[days]
