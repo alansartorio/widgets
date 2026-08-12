@@ -16,5 +16,5 @@ serde_json.workspace = true
 widgets-ipc.workspace = true
 widgets-paths.workspace = true
 rusqlite.workspace = true
-ureq.workspace = true
+widgets-http.workspace = true
 tracing.workspace = true

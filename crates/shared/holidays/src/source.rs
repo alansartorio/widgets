@@ -35,23 +35,18 @@ pub struct ApiDay {
     pub nombre: String,
 }
 
-pub fn agent() -> ureq::Agent {
-    ureq::Agent::config_builder()
-        .timeout_global(Some(REQUEST_TIMEOUT))
-        .build()
-        .into()
-}
-
 /// Ask the API for one year.
-pub fn fetch_year(agent: &ureq::Agent, year: i32) -> Result<Vec<ApiDay>> {
+///
+/// No agent to pass in any more: `widgets-http` makes a handle per request, so
+/// there is nothing for a caller to hold on to between years.
+pub fn fetch_year(year: i32) -> Result<Vec<ApiDay>> {
     let url = format!("{ENDPOINT}/{year}");
-    let body = agent
-        .get(&url)
-        .header("Accept", "application/json")
-        .call()
+    let body = widgets_http::Request::get(&url)
+        .accept_json()
+        .timeout(REQUEST_TIMEOUT)
+        .send()
         .with_context(|| format!("fetching {url}"))?
-        .body_mut()
-        .read_to_string()
+        .success()
         .context("reading the feriados response")?;
 
     let days: Vec<ApiDay> =

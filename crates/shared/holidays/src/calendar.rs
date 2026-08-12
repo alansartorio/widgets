@@ -160,7 +160,7 @@ impl Calendar {
 
     /// Fetch one year unconditionally and write it to the cache.
     pub fn refresh_year(&mut self, year: i32) -> Result<()> {
-        let days = source::fetch_year(&source::agent(), year)?;
+        let days = source::fetch_year(year)?;
         let file = YearFile {
             year,
             fetched_at: Local::now(),

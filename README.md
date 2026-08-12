@@ -1,13 +1,14 @@
 # widgets
 
 The tools behind the eww bar's pills, plus the calendar the clock opens. One
-cargo workspace, one flake, four integrations over four shared crates.
+cargo workspace, one flake, four integrations over five shared crates.
 
 ```
 crates/
   shared/
     ipc/        length-prefixed bincode framing, Endpoint/Subscription, bind()
     paths/      XDG (user services) and /var/lib (claude-usage) directories
+    http/       GET and POST over nixpkgs' libcurl, status and body back
     gtkui/      layer-shell placement, single-instance, the Nord palette
     holidays/   Argentine feriados, the override file, working-day arithmetic
   claude-usage/ core + daemon + cli + gui   — API usage, a system service

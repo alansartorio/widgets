@@ -16,7 +16,6 @@ use serde::Serialize;
 use std::fs;
 use std::process::Command;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use ureq::Agent;
 
 use crate::models::UsageReading;
 
@@ -198,24 +197,20 @@ struct Answer {
     body: String,
 }
 
+/// 401 and 403 are answers this cares about rather than transport failures,
+/// which is why nothing here calls `success()`: the status is the interesting
+/// part, and [`poll`] switches on it below.
 fn ask_endpoint(token: &str) -> Result<Answer> {
-    let agent: Agent = Agent::config_builder()
-        .timeout_global(Some(REQUEST_TIMEOUT))
-        // 401 and 403 are answers we care about, not transport failures.
-        .http_status_as_error(false)
-        .build()
-        .into();
-
-    let mut response = agent
-        .get(ENDPOINT)
-        .header("Authorization", &format!("Bearer {token}"))
+    let response = widgets_http::Request::get(ENDPOINT)
+        .bearer(token)
         .header("Content-Type", "application/json")
         .header("anthropic-beta", "oauth-2025-04-20")
-        .call()?;
+        .timeout(REQUEST_TIMEOUT)
+        .send()?;
 
     Ok(Answer {
-        status: response.status().as_u16() as u32,
-        body: response.body_mut().read_to_string()?,
+        status: response.status,
+        body: response.body,
     })
 }
 

@@ -17,9 +17,8 @@
 //!   and as whole objects from `/timesheets/active` — same key, two types. See
 //!   [`Relation`].
 //!
-//! ureq with rustls rather than openssl, because linking the system copy bakes
-//! a store path into the binary and the next rebuild moves it out from under a
-//! process the bar keeps running for days.
+//! The HTTP goes through `widgets-http`, which is nixpkgs' libcurl: two
+//! endpoints and a bearer token do not justify compiling a TLS stack.
 
 use std::time::Duration;
 
@@ -161,7 +160,6 @@ impl Query {
 }
 
 pub struct Client {
-    agent: ureq::Agent,
     base: String,
     token: String,
 }
@@ -169,10 +167,6 @@ pub struct Client {
 impl Client {
     pub fn new(base: &str, token: String) -> Self {
         Self {
-            agent: ureq::Agent::config_builder()
-                .timeout_global(Some(REQUEST_TIMEOUT))
-                .build()
-                .into(),
             // Trailing slashes would double up in every request path.
             base: base.trim_end_matches('/').to_string(),
             token,
@@ -224,14 +218,12 @@ impl Client {
     }
 
     fn get(&self, path: &str) -> Result<String> {
-        Ok(self
-            .agent
-            .get(format!("{}/api/{path}", self.base))
-            .header("Authorization", format!("Bearer {}", self.token))
-            .header("Accept", "application/json")
-            .call()?
-            .body_mut()
-            .read_to_string()?)
+        widgets_http::Request::get(format!("{}/api/{path}", self.base))
+            .bearer(&self.token)
+            .accept_json()
+            .timeout(REQUEST_TIMEOUT)
+            .send()?
+            .success()
     }
 }
 

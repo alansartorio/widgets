@@ -1,0 +1,15 @@
+[package]
+name = "widgets-http"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "widgets_http"
+path = "src/lib.rs"
+
+# curl, which is nixpkgs' libcurl through its Rust bindings rather than an HTTP
+# stack compiled from source. See the crate docs for why.
+[dependencies]
+anyhow.workspace = true
+curl.workspace = true

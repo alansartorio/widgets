@@ -8,6 +8,7 @@ members = [
   "crates/shared/ipc",
   "crates/shared/paths",
   "crates/shared/gtkui",
+  "crates/shared/http",
   "crates/shared/holidays",
   "crates/timers/core",
   "crates/timers/daemon",
@@ -40,6 +41,7 @@ license = "MIT"
 widgets-ipc = { path = "crates/shared/ipc" }
 widgets-paths = { path = "crates/shared/paths" }
 widgets-gtkui = { path = "crates/shared/gtkui" }
+widgets-http = { path = "crates/shared/http" }
 holidays = { path = "crates/shared/holidays" }
 
 anyhow = "1"
@@ -60,10 +62,11 @@ bincode = "1"
 rusqlite = { version = "0.40", features = ["bundled"] }
 # v4 talks D-Bus through zbus, which is pure Rust — no libdbus in buildInputs.
 notify-rust = "4"
-# rustls rather than openssl. Linking the system copy bakes a store path into
-# the binary, and the next rebuild moves it out from under a process the bar
-# keeps running for days.
-ureq = { version = "3", default-features = false, features = ["rustls"] }
+# nixpkgs' libcurl through its bindings, and no HTTP stack compiled from
+# source. Only `widgets-http` names this; everything else goes through that.
+# `static-curl` stays off so curl-sys finds the system library with pkg-config
+# rather than building the C sources, which is the entire point.
+curl = "0.4"
 # Reads and writes the holiday override file. toml_edit rather than toml
 # because `kimai holidays set` has to insert a row into a file a person wrote,
 # comments and all, and a parse-then-reserialise round trip eats them.
