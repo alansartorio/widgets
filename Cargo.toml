@@ -8,6 +8,7 @@ members = [
   "crates/shared/ipc",
   "crates/shared/paths",
   "crates/shared/gtkui",
+  "crates/shared/holidays",
   "crates/timers/core",
   "crates/timers/daemon",
   "crates/timers/cli",

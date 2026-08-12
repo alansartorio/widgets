@@ -1,0 +1,18 @@
+[package]
+name = "holidays"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "holidays"
+path = "src/lib.rs"
+
+[dependencies]
+widgets-paths.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml_edit.workspace = true
+ureq.workspace = true
