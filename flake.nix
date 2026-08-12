@@ -1,5 +1,5 @@
 {
-  description = "The bar's tools: claude-usage, timers, kimai and a calendar, over shared plumbing";
+  description = "The bar's tools: claude-usage, timers, kimai, a calendar and a light, over shared plumbing";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -149,6 +149,10 @@
           flavour = "hm";
           inherit self;
         };
+        hass = import ./nix/modules/hass.nix {
+          flavour = "hm";
+          inherit self;
+        };
         default = import ./nix/hm.nix { inherit self; };
       };
 
@@ -168,6 +172,10 @@
           inherit self;
         };
         calendar = import ./nix/modules/calendar.nix {
+          flavour = "nixos";
+          inherit self;
+        };
+        hass = import ./nix/modules/hass.nix {
           flavour = "nixos";
           inherit self;
         };

@@ -2,7 +2,7 @@
 #
 # Importing this declares the options and turns nothing on; each service still
 # needs its own `enable`. So a host that wants only the calendar pays for the
-# other two in evaluation time and nothing else, which is cheap enough that
+# others in evaluation time and nothing else, which is cheap enough that
 # picking modules individually is rarely worth the extra import lines — the
 # per-service modules stay exported for the hosts where it is.
 #
@@ -20,6 +20,10 @@
       inherit self;
     })
     (import ./modules/calendar.nix {
+      flavour = "hm";
+      inherit self;
+    })
+    (import ./modules/hass.nix {
       flavour = "hm";
       inherit self;
     })

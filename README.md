@@ -1,12 +1,12 @@
 # widgets
 
 The tools behind the eww bar's pills, plus the calendar the clock opens. One
-cargo workspace, one flake, four integrations over five shared crates.
+cargo workspace, one flake, five integrations over five shared crates.
 
 ```
 crates/
   shared/
-    ipc/        length-prefixed bincode framing, Endpoint/Subscription, bind()
+    ipc/        length-prefixed bincode framing, Endpoint/Subscription, bind{,_datagram}()
     paths/      XDG (user services) and /var/lib (claude-usage) directories
     http/       GET and POST over nixpkgs' libcurl, status and body back
     gtkui/      layer-shell placement, single-instance, the Nord palette
@@ -15,6 +15,7 @@ crates/
   timers/       core + daemon + cli + gui   — named countdown timers
   kimai/        api + core + cli + gui      — time tracking, no daemon
   calendar/     gui                         — the month, with feriados
+  hass/         core + daemon               — a Home Assistant light, no GUI
 nix/
   mkbin.nix     one workspace build, one thin derivation per binary
   modules/      one per integration, each `{ flavour }` for NixOS and HM
@@ -54,6 +55,12 @@ services.kimai = {
   tokenFile = osConfig.sops.secrets.kimai_token.path;   # the path, never the token
 };
 programs.calendar-gui.enable = true;
+services.hass = {
+  enable = true;
+  url = "http://homeassistant.local:8123";
+  entity = "light.desk_lamp";
+  tokenFile = osConfig.sops.secrets.hass_token.path;
+};
 ```
 
 ```nix
@@ -67,9 +74,34 @@ services.claude-usage = {
 ```
 
 Every module defaults its own packages from this flake, so nothing has to name
-a derivation. `homeManagerModules.{timers,kimai,calendar}` and
-`nixosModules.{claude-usage,timers,kimai,calendar}` exist for a host that wants
-one without the others.
+a derivation. `homeManagerModules.{timers,kimai,calendar,hass}` and
+`nixosModules.{claude-usage,timers,kimai,calendar,hass}` exist for a host that
+wants one without the others.
+
+## The light
+
+`hass-daemon` is `hass-light-eww`, which used to be a repo of its own. It drives
+one light entity from the bar: scroll to dim, right click to switch between
+brightness and colour temperature, click to toggle. Two sockets, both under
+`$XDG_RUNTIME_DIR/hass/`:
+
+```yuck
+(deflisten hass-lamp :initial '{"state":"loading"}'
+  "sleep 5; socat -u UNIX-CLIENT:$XDG_RUNTIME_DIR/hass/state.sock -")
+
+:onscroll     "socat -u - UNIX-SENDTO:$XDG_RUNTIME_DIR/hass/command.sock <<< $(test {} = up && printf increase || printf decrease)"
+:onclick      "socat -u - UNIX-SENDTO:$XDG_RUNTIME_DIR/hass/command.sock <<< toggle_state"
+:onrightclick "socat -u - UNIX-SENDTO:$XDG_RUNTIME_DIR/hass/command.sock <<< toggle_mode"
+```
+
+Those paths are the one thing that changed for the bar: the old launcher used
+`/tmp/hass-light.sock` and `/tmp/hass-light-eww-output.sock`, which anything on
+the box could have bound first. `commandSocket`/`stateSocket` set them back if
+some config would rather not move.
+
+`launch-hass-server` is gone with it — no `killall`, no `socat` pipe into stdin,
+and no token exported into a process environment. `services.hass` is a plain user
+unit like `timers`.
 
 ## Feriados
 
@@ -101,11 +133,11 @@ cargo clippy --workspace --all-targets
 nix build .#kimai .#calendar-gui
 ```
 
-`nix build` deliberately has no default: nine binaries and none of them is the
+`nix build` deliberately has no default: ten binaries and none of them is the
 point of the repo.
 
 One thing to preserve when touching `nix/mkbin.nix`: the `gtk` flag on `mkBin`
 is what keeps the CLIs and daemons at ~50 MiB while the GUIs carry GTK's ~956
 MiB. Running `wrapGAppsHook4` in the workspace build instead wraps *every*
-binary, and each wrapper names the GTK store paths outright — so all nine come
+binary, and each wrapper names the GTK store paths outright — so all ten come
 out with the same closure, including the daemons that never open a window.
