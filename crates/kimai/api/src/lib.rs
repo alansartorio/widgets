@@ -13,6 +13,9 @@
 //!   despite being filtered on `end`. Anything summing durations has to drop
 //!   the entries with no end or it will count the running one twice: once at
 //!   zero here, once counted forward by the caller.
+//! * `project` and `activity` come back as bare integer ids from the collection
+//!   and as whole objects from `/timesheets/active` — same key, two types. See
+//!   [`Relation`].
 //!
 //! ureq with rustls rather than openssl, because linking the system copy bakes
 //! a store path into the binary and the next rebuild moves it out from under a
@@ -35,11 +38,11 @@ pub const PAGE_SIZE: u32 = 100;
 /// of 100 is two thousand entries — years of work, not a month of it.
 pub const MAX_PAGES: u32 = 20;
 
-/// One timesheet record.
+/// One timesheet record, from either endpoint.
 ///
-/// The collection endpoint expands nothing, so `project` and `activity` arrive
-/// only from `/timesheets/active`; both are optional there too, depending on
-/// how the entry was booked, and the label is built from whichever parts exist.
+/// `project` and `activity` are the interesting part: see [`Relation`]. Both
+/// are optional in the sense that the relation itself can be null, and the
+/// label is built from whichever parts have a name.
 #[derive(Clone, Debug, Deserialize)]
 pub struct Entry {
     #[serde(default)]
@@ -50,16 +53,51 @@ pub struct Entry {
     #[serde(default)]
     pub duration: Option<i64>,
     #[serde(default)]
-    pub project: Option<Named>,
+    pub project: Option<Relation>,
     #[serde(default)]
-    pub activity: Option<Named>,
+    pub activity: Option<Relation>,
     #[serde(default)]
     pub description: Option<String>,
 }
 
+/// A reference to a project or an activity.
+///
+/// Kimai sends these under the same key in two different *types*, chosen by
+/// serialization group rather than by field name. `Timesheet.php` declares both
+/// against the same `activity`/`project` key:
+///
+/// * `Not_Expanded` — a virtual property emitting the relation's id as a bare
+///   integer: `"activity": 667`. This is what the collection endpoint sends.
+/// * `Expanded` — the whole related object, which is what `/timesheets/active`
+///   sends, and the only form that carries a name.
+///
+/// So a type that expects the object fails on the collection with `invalid type:
+/// integer, expected struct`, and the id form is not an error to be tolerated —
+/// it is what that endpoint always sends. Only the name is ever wanted, so the
+/// id deserializes to a relation without one.
 #[derive(Clone, Debug, Deserialize)]
-pub struct Named {
-    pub name: String,
+#[serde(untagged)]
+pub enum Relation {
+    /// `Not_Expanded`: the bare id.
+    Id(i64),
+    /// `Expanded`: the object. `name` is optional so an unfamiliar shape
+    /// degrades to a nameless relation rather than failing the whole response —
+    /// serde reports an untagged mismatch as "did not match any variant", which
+    /// names neither the field nor the endpoint that sent it.
+    Object {
+        #[serde(default)]
+        name: Option<String>,
+    },
+}
+
+impl Relation {
+    /// The display name, when this came back expanded.
+    pub fn name(&self) -> Option<&str> {
+        match self {
+            Relation::Id(_) => None,
+            Relation::Object { name } => name.as_deref(),
+        }
+    }
 }
 
 impl Entry {
@@ -68,11 +106,12 @@ impl Entry {
         self.end.is_none()
     }
 
-    /// `"Project / Activity"`, skipping whichever half is absent.
+    /// `"Project / Activity"`, skipping whichever half has no name — which is
+    /// either half that is null, and both halves on a collection response.
     pub fn task(&self) -> String {
         [&self.project, &self.activity]
             .iter()
-            .filter_map(|part| part.as_ref().map(|named| named.name.as_str()))
+            .filter_map(|part| part.as_ref().and_then(Relation::name))
             .collect::<Vec<_>>()
             .join(" / ")
     }
@@ -276,5 +315,43 @@ mod tests {
         let neither: Entry =
             serde_json::from_str(r#"{"id": 1, "begin": "2026-08-11T09:00:00-0300"}"#).unwrap();
         assert_eq!(neither.task(), "");
+    }
+
+    /// The shape the collection endpoint actually sends, keys and order as they
+    /// come off the wire. Every other fixture here is written expanded, which is
+    /// what let a type that could only parse the expanded form look tested: the
+    /// fixtures agreed with the struct, and neither agreed with the server.
+    #[test]
+    fn the_collection_sends_relations_as_bare_ids() {
+        let entries: Vec<Entry> = serde_json::from_str(
+            r#"[{"activity":667,"project":41,"user":3,
+                 "id":9001,"begin":"2026-08-11T09:00:00-0300",
+                 "end":"2026-08-11T12:00:00-0300","duration":10800,
+                 "description":null,"tags":[]}]"#,
+        )
+        .expect("a collection response must parse");
+
+        assert_eq!(finished_seconds(&entries), 10800);
+        // No name to be had from an id, so the label is empty rather than wrong.
+        assert_eq!(entries[0].task(), "");
+    }
+
+    /// Both endpoints feed one `Entry`, so one value has to accept both shapes.
+    #[test]
+    fn one_entry_type_reads_either_endpoint() {
+        let expanded: Entry = serde_json::from_str(
+            r#"{"id":1,"begin":"2026-08-11T09:00:00-0300",
+                "project":{"id":41,"name":"SmartMachine"},
+                "activity":{"id":667,"name":"Firmware"}}"#,
+        )
+        .unwrap();
+        assert_eq!(expanded.task(), "SmartMachine / Firmware");
+
+        // A relation that is present but null is not the same as an id.
+        let nulled: Entry = serde_json::from_str(
+            r#"{"id":1,"begin":"2026-08-11T09:00:00-0300","project":null,"activity":667}"#,
+        )
+        .unwrap();
+        assert_eq!(nulled.task(), "");
     }
 }
