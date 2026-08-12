@@ -36,7 +36,7 @@
 use std::io::{Read, Write};
 use std::marker::PhantomData;
 use std::os::unix::fs::PermissionsExt;
-use std::os::unix::net::{UnixListener, UnixStream};
+use std::os::unix::net::{UnixDatagram, UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -106,15 +106,36 @@ pub fn write_frame<T: Serialize>(stream: &mut impl Write, value: &T) -> Result<(
 /// claude-usage wants 0660, because it runs as its own user and the bar reaches
 /// it through a shared group.
 pub fn bind(socket: &Path, mode: u32) -> Result<UnixListener> {
+    clear(socket)?;
+    let listener =
+        UnixListener::bind(socket).with_context(|| format!("binding {}", socket.display()))?;
+    std::fs::set_permissions(socket, std::fs::Permissions::from_mode(mode))?;
+    Ok(listener)
+}
+
+/// The same, for a datagram socket.
+///
+/// Nothing in this module's framing applies to one — a datagram is already a
+/// message boundary, so there is no length prefix to read and no reply to write.
+/// It is here for the bind: `hass-daemon`'s peer is a yuck string running
+/// `socat -u - UNIX-SENDTO:…`, one word per datagram, and the stale-socket unlink
+/// and the mode are exactly as easy to get wrong there as anywhere else.
+pub fn bind_datagram(socket: &Path, mode: u32) -> Result<UnixDatagram> {
+    clear(socket)?;
+    let bound =
+        UnixDatagram::bind(socket).with_context(|| format!("binding {}", socket.display()))?;
+    std::fs::set_permissions(socket, std::fs::Permissions::from_mode(mode))?;
+    Ok(bound)
+}
+
+/// Make a path bindable: its directory exists, and nothing is sitting on it.
+fn clear(socket: &Path) -> Result<()> {
     if let Some(parent) = socket.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("creating {}", parent.display()))?;
     }
     let _ = std::fs::remove_file(socket);
-    let listener =
-        UnixListener::bind(socket).with_context(|| format!("binding {}", socket.display()))?;
-    std::fs::set_permissions(socket, std::fs::Permissions::from_mode(mode))?;
-    Ok(listener)
+    Ok(())
 }
 
 /// A daemon's socket, from a client's side.

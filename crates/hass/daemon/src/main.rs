@@ -1,16 +1,19 @@
 //! The light pill's daemon: it owns the widget's mode, the last known lamp
-//! state, and the socket the bar reads.
+//! state, and the two sockets the bar talks to.
 //!
-//! Two threads and no async runtime, like `timers-daemon`. The main thread reads
-//! commands; a listener thread accepts readers on the state socket and hands
-//! each one the current line before adding it to the fan-out list.
+//! Two threads and no async runtime, like `timers-daemon`. The main thread blocks
+//! on the command socket; a listener thread accepts subscribers on the state
+//! socket and hands each one the current line before adding it to the fan-out
+//! list.
 //!
-//! Everything that is still a literal in here — the entity, both paths, and the
-//! fact that commands arrive on stdin from a `socat` the launcher pipes in — is
-//! what the commits after this one are about. The split itself changes nothing
-//! about what the program does.
+//! ```text
+//!  eww  ──socat UNIX-SENDTO──▶  the command socket  (datagram)   one word per send
+//!  eww  ◀──socat UNIX-CLIENT──  the state socket    (stream)     one JSON line per change
+//! ```
+//!
+//! The entity and both paths are still literals here; that is the next commit.
 
-use std::io::{BufRead, Write};
+use std::io::Write;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -23,7 +26,13 @@ use hass_core::proto::Command;
 use hass_core::widget::{Snapshot, Widget};
 
 const ENTITY: &str = "light.desk_lamp";
+const COMMAND_SOCKET: &str = "/tmp/hass-light.sock";
 const STATE_SOCKET: &str = "/tmp/hass-light-eww-output.sock";
+
+/// The longest datagram worth reading. The longest command is `toggle_state`;
+/// anything past this is truncated and then fails to parse, which is the right
+/// answer for a sender this program does not recognise.
+const MAX_COMMAND: usize = 64;
 
 /// Per-user: nothing else on the machine has any business watching this
 /// session's lamp be dimmed.
@@ -103,11 +112,22 @@ fn run() -> Result<()> {
     let token = std::env::var("HASS_TOKEN").context("please set up the HASS_TOKEN env variable")?;
 
     let lamp = Lamp::new(Client::new(&host, token), ENTITY.to_owned());
-    tracing::info!(entity = lamp.entity_id(), state = STATE_SOCKET, "starting");
+    tracing::info!(
+        entity = lamp.entity_id(),
+        commands = COMMAND_SOCKET,
+        state = STATE_SOCKET,
+        "starting"
+    );
 
-    // widgets_ipc::bind rather than UnixListener::bind: it creates the parent
-    // directory, unlinks a socket a killed daemon left behind — which makes bind
-    // fail with EADDRINUSE even though nothing is listening — and sets the mode.
+    // Both sockets before the first request, so a Home Assistant that is not up
+    // yet cannot leave the bar's `socat` retrying against a path that does not
+    // exist. This process exits on that error and its unit restarts it; the paths
+    // existing in the meantime is what keeps the failure to one pill.
+    //
+    // widgets_ipc rather than std: it creates the parent directory, unlinks a
+    // socket a killed daemon left behind — which makes bind fail with EADDRINUSE
+    // even though nothing is listening — and sets the mode.
+    let commands = widgets_ipc::bind_datagram(std::path::Path::new(COMMAND_SOCKET), SOCKET_MODE)?;
     let listener = widgets_ipc::bind(std::path::Path::new(STATE_SOCKET), SOCKET_MODE)?;
 
     let initial = lamp.state()?;
@@ -125,8 +145,13 @@ fn run() -> Result<()> {
 
     subscribers.publish(bar.lock().unwrap().snapshot());
 
-    for read in std::io::stdin().lock().lines() {
-        let raw = read.context("reading stdin")?;
+    let mut buf = [0u8; MAX_COMMAND];
+    loop {
+        let read = commands
+            .recv(&mut buf)
+            .with_context(|| format!("reading {COMMAND_SOCKET}"))?;
+
+        let raw = String::from_utf8_lossy(&buf[..read]);
         let command = match Command::parse(&raw) {
             Ok(command) => command,
             Err(e) => {
@@ -139,8 +164,6 @@ fn run() -> Result<()> {
 
         handle(command, &lamp, &bar, &subscribers);
     }
-
-    Ok(())
 }
 
 /// Fold one command in, send it on, and publish what the pill now shows.
