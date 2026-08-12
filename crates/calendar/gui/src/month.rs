@@ -104,6 +104,12 @@ impl Component for Month {
         gtk::Window {
             set_title: Some("calendario"),
 
+            // The width is stated, not measured; see `ui::POPUP_WIDTH`. This
+            // only holds because every month-dependent label below is capped —
+            // a window is never narrower than its contents demand, so one label
+            // asking for its full text would win against this.
+            set_default_size: (crate::ui::POPUP_WIDTH, -1),
+
             // Escape closes; the arrows page. Note the OnDemand caveat: keys
             // only arrive once the window has been clicked, so an arrow press
             // that "does nothing" is the compositor still pointing at whatever
@@ -148,6 +154,14 @@ impl Component for Month {
                         set_margin_start: 4,
                         set_hexpand: true,
                         set_xalign: 0.0,
+                        // An ellipsizing label reports `max_width_chars` as its
+                        // *minimum* and its full text as its natural width, so
+                        // this is what stops "septiembre" from asking for more
+                        // room than "mayo" and widening the window. It expands
+                        // into whatever the header has left, and only actually
+                        // ellipsizes if that is not enough.
+                        set_ellipsize: gtk::pango::EllipsizeMode::End,
+                        set_max_width_chars: 1,
                         #[watch]
                         set_label: &model.title(),
                     },
@@ -168,8 +182,22 @@ impl Component for Month {
 
                 gtk::Label {
                     add_css_class: "cal-holidays",
-                    set_halign: gtk::Align::Start,
+                    // Fill rather than Start: the label has to be given the
+                    // popup's width to wrap inside it, and `xalign` is what
+                    // keeps the text itself left-aligned.
+                    set_halign: gtk::Align::Fill,
+                    set_xalign: 0.0,
                     set_margin_top: 10,
+                    // A wrapping label takes `max_width_chars` as its *natural*
+                    // width -- the opposite of the ellipsizing case above -- so
+                    // this caps the demand and the text rewraps into whatever
+                    // width the window settled on. WordChar rather than Word
+                    // because a single unbreakable word sets the minimum, and
+                    // "Inmaculada" is longer than any column of this grid.
+                    set_wrap: true,
+                    set_wrap_mode: gtk::pango::WrapMode::WordChar,
+                    set_max_width_chars: 1,
+                    set_height_request: crate::ui::HOLIDAYS_HEIGHT,
                     #[watch]
                     set_label: &model.holiday_list(),
                     #[watch]

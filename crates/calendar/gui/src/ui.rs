@@ -6,6 +6,31 @@
 
 use widgets_gtkui::Keyboard;
 
+/// The popup's width, fixed so that paging months cannot resize it.
+///
+/// Two things in here are month-dependent text — the title ("septiembre 2026"
+/// against "mayo 2026") and the holiday names under the grid, which run from
+/// nothing to "Día de la Inmaculada Concepción de María". A window that sizes to
+/// its contents changes width on every ‹, and because `place` anchors only the
+/// top edge the compositor re-centres it, so it slides sideways as well as
+/// growing. Stating the width once costs a truncated title in the worst case and
+/// buys a calendar that stays where you put it.
+///
+/// The number is the grid's: seven `.cal-day` cells at their 30px minimum, six
+/// 2px gaps, and `.cal-popup`'s 14px of padding each side, which is 250. The
+/// header needs more than the grid does — four buttons and the title — so this
+/// rounds up to leave the title about 150px, comfortably past the longest month
+/// name at the default font size.
+pub const POPUP_WIDTH: i32 = 300;
+
+/// Height reserved for the holiday list, in pixels.
+///
+/// Three lines at `.cal-holidays`' 11px. This is a floor, not a cap: a month
+/// with more feriados than fit still grows, and that is the right trade, since
+/// the alternative is hiding one. It exists so the ordinary case — a month with
+/// none against a month with two — does not move the window at all.
+pub const HOLIDAYS_HEIGHT: i32 = 48;
+
 /// Anchor the window under the bar.
 ///
 /// `OnDemand`: this is a read-and-click window, and taking the keyboard away
