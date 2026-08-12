@@ -71,7 +71,7 @@ impl Lamp {
     }
 
     #[tracing::instrument]
-    pub async fn send_command(&mut self, command: LampCommand) {
+    pub fn send_command(&mut self, command: LampCommand) {
         tracing::info!("sending command to lamp");
         self.client
             .set_state(
@@ -83,19 +83,18 @@ impl Lamp {
                         Off => "turn_off",
                     }
                 },
-                serde_json::to_value(CompleteLampCommand {
+                &serde_json::to_value(CompleteLampCommand {
                     command,
                     entity_id: self.entity_id.clone(),
                 })
                 .unwrap(),
             )
-            .await
             .unwrap();
     }
 
-    pub async fn get_state(&self) -> LampState {
+    pub fn get_state(&self) -> LampState {
         tracing::info!("obtaining state from lamp");
-        let data = self.client.get_state(&self.entity_id).await.unwrap();
+        let data = self.client.get_state(&self.entity_id).unwrap();
         tracing::debug!(
             data = serde_json::to_string(&data).unwrap(),
             "got state from lamp"

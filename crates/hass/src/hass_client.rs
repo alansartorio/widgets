@@ -1,49 +1,55 @@
-use reqwest::{Client, Result};
+use std::time::Duration;
+
+use anyhow::{Context, Result};
 use serde_json::Value;
-use url::Url;
+
+/// Well under anything that waits on it, so a hung request cannot pin the
+/// thread that made it.
+pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug)]
 pub struct HassClient {
-    uri: Url,
+    base: String,
     token: String,
-    http_client: Client,
 }
 
 impl HassClient {
-    pub fn new(uri: Url, token: String) -> Self {
+    pub fn new(base: &str, token: String) -> Self {
         Self {
-            uri,
+            // Trailing slashes would double up in every request path. The
+            // version this replaces used `Url::join`, which does more than that
+            // and less usefully: joining "/api/…" onto a base *discards* any
+            // path the base had, so a Home Assistant behind a reverse proxy at
+            // /hass would have been asked the wrong URL.
+            base: base.trim_end_matches('/').to_string(),
             token,
-            http_client: Client::new(),
         }
     }
 
-    pub async fn get_state(&self, entity_id: &str) -> Result<Value> {
-        let HassClient { uri, token, .. } = self;
-
-        self.http_client
-            .get(uri.join(&format!("/api/states/{entity_id}")).unwrap())
-            .header("Authorization", format!("Bearer {token}"))
+    pub fn get_state(&self, entity_id: &str) -> Result<Value> {
+        let body = widgets_http::Request::get(format!("{}/api/states/{entity_id}", self.base))
+            .bearer(&self.token)
+            .accept_json()
+            .timeout(REQUEST_TIMEOUT)
             .send()
-            .await?
-            .text()
-            .await
-            .map(|t| serde_json::from_str(&t).unwrap())
+            .with_context(|| format!("asking Home Assistant about {entity_id}"))?
+            .success()?;
+        serde_json::from_str(&body).with_context(|| format!("unreadable state for {entity_id}"))
     }
 
-    pub async fn set_state(&self, domain: &str, service: &str, value: Value) -> Result<Value> {
-        let HassClient { uri, token, .. } = self;
-
-        self.http_client
-            .post(
-                uri.join(&format!("/api/services/{domain}/{service}"))
-                    .unwrap(),
-            )
-            .json(&value)
-            .header("Authorization", format!("Bearer {token}"))
-            .send()
-            .await?
-            .json()
-            .await
+    /// Call a service. The answer is the list of states Home Assistant changed,
+    /// which the caller already knows, so only the status is read.
+    pub fn set_state(&self, domain: &str, service: &str, value: &Value) -> Result<()> {
+        let payload = serde_json::to_string(value).expect("a service call is always serialisable");
+        widgets_http::Request::post_json(
+            format!("{}/api/services/{domain}/{service}", self.base),
+            payload,
+        )
+        .bearer(&self.token)
+        .timeout(REQUEST_TIMEOUT)
+        .send()
+        .with_context(|| format!("calling {domain}.{service}"))?
+        .success()?;
+        Ok(())
     }
 }

@@ -1,19 +1,20 @@
 [package]
 name = "hass-light-eww"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
 
-# Its own dependency versions rather than the workspace's, and its own edition,
-# because this is the crate as it arrived from the repo it came from — the point
-# of this commit is that nothing about it was rewritten on the way in. Both go
-# to the workspace's in the commits that follow.
+[[bin]]
+name = "hass-light-eww"
+path = "src/main.rs"
+
+# The workspace's dependencies now, and one fewer of them than the async stack
+# it replaces: no tokio, no tokio-stream, no reqwest, no url.
 [dependencies]
-reqwest = { version = "0.13.2", features = ["json"] }
-serde = { version = "1.0.228", features = ["serde_derive", "derive"] }
-serde_json = "1.0.149"
-serde_plain = "1.0.2"
-tokio = { version = "1.49.0", features = ["full"] }
-tokio-stream = { version = "0.1.18", features = ["net"] }
-tracing = "0.1.44"
-tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
-url = "2.5.8"
+widgets-http.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_plain = "1"
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
