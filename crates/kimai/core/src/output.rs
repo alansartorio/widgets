@@ -261,22 +261,23 @@ impl Reading {
         }
     }
 
-    /// The collapsed pill.
+    /// The collapsed pill: what is on the clock now, and what today comes to.
     ///
-    /// The *week* delta rather than today's, which is the one judgement call
-    /// here: today's progress is already the ring around the icon, so spending
-    /// the extra characters on it would say the same thing twice. How the week
-    /// stands is what decides whether you stay late.
+    /// Totals rather than a delta. The pill is a reading, not a judgement — how
+    /// far ahead or behind the week is depends on a target, and a signed number
+    /// against an unstated target is the kind of thing you end up re-deriving in
+    /// your head every time you glance at it. Both deltas are still a hover
+    /// away in the tooltip and laid out in full in `kimai-gui`, which is where
+    /// the comparison belongs.
     fn label(&self, state: State, out: &Output) -> String {
         match state {
             State::Failed => "kimai unreachable".into(),
             State::Holiday if self.today_seconds == 0 => "feriado".into(),
-            State::Holiday => format!("feriado · {} · {}", out.today_time, out.week_delta),
-            State::Running => format!(
-                "{} / {} · {}",
-                out.running_time, out.today_time, out.week_delta
-            ),
-            State::Idle => format!("{} · {}", out.today_time, out.week_delta),
+            State::Holiday => format!("feriado · {}", out.today_time),
+            // Session first, then the day it is adding to.
+            State::Running => format!("{} / {}", out.running_time, out.today_time),
+            // Nothing running, so there is no session to put in front of it.
+            State::Idle => out.today_time.clone(),
         }
     }
 
@@ -397,5 +398,71 @@ mod tests {
         assert_eq!(percent(14400, 28800), 50);
         // Overtime fills the ring rather than overflowing it.
         assert_eq!(percent(36000, 28800), 100);
+    }
+
+    /// A reading with two hours booked and, when `running`, forty minutes of it
+    /// still on the clock. Expected is set well above both so that any delta
+    /// leaking back into the pill would be an obvious signed number.
+    fn reading(running: bool, working_day: bool) -> Reading {
+        let now = Local::now();
+        Reading {
+            now,
+            today: now.date_naive(),
+            today_seconds: 7200,
+            week_seconds: 7200,
+            month_seconds: 7200,
+            expected_today: 28800,
+            expected_week: 144_000,
+            expected_month: 576_000,
+            running: running.then(|| RunningEntry {
+                task: "SmartMachine / Firmware".into(),
+                description: String::new(),
+                since: "09:00".into(),
+                seconds: 2400,
+            }),
+            day: holidays::Day {
+                date: now.date_naive(),
+                kind: if working_day {
+                    holidays::DayKind::Working
+                } else {
+                    holidays::DayKind::Holiday
+                },
+                name: (!working_day).then(|| "Día de prueba".to_string()),
+                overridden: false,
+            },
+            is_working_day: working_day,
+            week: (now.date_naive(), now.date_naive()),
+            holidays_degraded: false,
+        }
+    }
+
+    /// The pill reports totals, never a delta — the whole point of the last
+    /// change to `label`. Asserting on the exact strings is the only way that
+    /// stays true, since the deltas are still right there in the same `Output`.
+    #[test]
+    fn the_pill_shows_the_session_and_the_day_not_a_delta() {
+        let running = reading(true, true).output();
+        assert_eq!(running.label, "40:00 / 2:00:00");
+
+        let idle = reading(false, true).output();
+        assert_eq!(idle.label, "2:00:00");
+
+        let feriado = reading(true, false).output();
+        assert_eq!(feriado.label, "feriado · 2:00:00");
+
+        // The deltas are still computed and published; they are just not on the
+        // pill. The tooltip and kimai-gui read these.
+        assert_eq!(running.today_delta, "-6:00:00");
+        assert!(!running.label.contains(&running.today_delta));
+        assert!(!running.label.contains(&running.week_delta));
+    }
+
+    /// A feriado with nothing booked has no total worth showing, so it says only
+    /// what the day is.
+    #[test]
+    fn an_empty_feriado_says_only_that() {
+        let mut r = reading(false, false);
+        r.today_seconds = 0;
+        assert_eq!(r.output().label, "feriado");
     }
 }
