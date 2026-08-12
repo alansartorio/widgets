@@ -42,6 +42,7 @@ usage: kimai [command]
   (none) | status           print one reading as JSON, then exit
   tail                      stream JSON, one line per change, until killed
   today | week | month      a human summary
+  initial                   the JSON the bar's deflisten should start from
 
   holidays sync   [--year N] [--force]   fetch the feriados for a year
   holidays list   [--year N] [--month M] [--json]
@@ -64,6 +65,10 @@ fn main() {
     match args.first().map(String::as_str) {
         None | Some("status") | Some("once") => once(),
         Some("tail") => tail(),
+        // The bar's `deflisten :initial` has to be a literal in the yuck, and a
+        // literal is a copy that can drift. This prints the one it should be,
+        // so keeping the two in step is a diff rather than an audit.
+        Some("initial") => emit_once(Output::failed("starting")),
         Some("today") => summary(Span::Today),
         Some("week") => summary(Span::Week),
         Some("month") => summary(Span::Month),
@@ -318,6 +323,21 @@ mod tests {
         assert_eq!(obj["failed"], serde_json::json!(true));
         assert_eq!(obj["label"], serde_json::json!("kimai unreachable"));
         assert_eq!(obj["tooltip"], serde_json::json!("kimai: sin VPN"));
+    }
+
+    /// `Output` deserializes with no `#[serde(default)]` anywhere, so a literal
+    /// that has lost a field fails to parse — which makes this a real check on
+    /// the copy in the bar's yuck rather than a restatement of the struct.
+    ///
+    /// The string below is that copy, verbatim. When it stops matching, the
+    /// yuck's `:initial` needs the output of `kimai initial` pasted into it.
+    #[test]
+    fn the_bars_initial_literal_is_still_the_shape_the_cli_prints() {
+        const WIDGET_INITIAL: &str = r#"{"configured":true,"ok":false,"failed":true,"state":"failed","running":false,"task":"","description":"","since":"","running_time":"0s","today_time":"0s","week_time":"0s","month_time":"0s","today_seconds":0,"week_seconds":0,"month_seconds":0,"expected_today":"0s","expected_week":"0s","expected_month":"0s","today_delta":"+0s","week_delta":"+0s","month_delta":"+0s","today_delta_seconds":0,"week_delta_seconds":0,"month_delta_seconds":0,"day_percent":0,"week_percent":0,"month_percent":0,"holiday":false,"holiday_name":"","day_kind":"working","holidays_degraded":true,"week_start":"","week_end":"","month_label":"","label":"kimai unreachable","tooltip":"kimai: starting","error":"starting"}"#;
+
+        let parsed: Output = serde_json::from_str(WIDGET_INITIAL)
+            .expect("the bar's initial value no longer parses as an Output");
+        assert_eq!(parsed, Output::failed("starting"));
     }
 
     #[test]
