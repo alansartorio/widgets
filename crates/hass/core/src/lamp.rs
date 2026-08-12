@@ -22,14 +22,10 @@ use serde_json::{Value, json};
 
 use crate::api::Client;
 
-/// Home Assistant's brightness scale. 0 is not in it — a lamp at brightness 0 is
-/// a lamp that is off.
+/// Home Assistant's brightness scale. 0 is not in it — a lamp at brightness 0
+/// is a lamp that is off — which is what the configured floor on percentages
+/// exists to respect.
 const BRIGHTNESS_MAX: f32 = 255.0;
-
-/// The floor on the brightness percentage: 1/255, the dimmest a lamp can be
-/// while still being on. Scrolling all the way down should leave it there rather
-/// than switch it off behind the widget's back.
-const MIN_BRIGHTNESS: f32 = 0.39;
 
 /// The mired span one particular lamp accepts.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -130,13 +126,17 @@ impl Call {
 
 impl LampState {
     /// Apply a change locally, as if it had already landed.
-    pub fn apply(&mut self, change: Change) {
+    ///
+    /// `min_brightness` is the floor on the brightness percentage, from the
+    /// config: scrolling all the way down should leave the lamp at its dimmest,
+    /// not off, because the widget's own off state is what a click is for.
+    pub fn apply(&mut self, change: Change, min_brightness: f32) {
         match change {
             Change::TurnOn => self.status = Status::On,
             Change::TurnOff => self.status = Status::Off,
             Change::DeltaBrightness(delta) => {
                 if let Some(brightness) = &mut self.brightness {
-                    *brightness = (*brightness + delta).clamp(MIN_BRIGHTNESS, 100.0);
+                    *brightness = (*brightness + delta).clamp(min_brightness, 100.0);
                 }
             }
             Change::DeltaTemperature(delta) => {
@@ -186,15 +186,24 @@ impl LampState {
 pub struct Lamp {
     client: Client,
     entity_id: String,
+    min_brightness: f32,
 }
 
 impl Lamp {
-    pub fn new(client: Client, entity_id: String) -> Self {
-        Self { client, entity_id }
+    pub fn new(client: Client, entity_id: String, min_brightness: f32) -> Self {
+        Self {
+            client,
+            entity_id,
+            min_brightness,
+        }
     }
 
     pub fn entity_id(&self) -> &str {
         &self.entity_id
+    }
+
+    pub fn min_brightness(&self) -> f32 {
+        self.min_brightness
     }
 
     /// Read the lamp's current state.
@@ -321,7 +330,7 @@ mod tests {
             "attributes": { "brightness": 128 }
         }))
         .unwrap();
-        state.apply(Change::DeltaTemperature(10.0));
+        state.apply(Change::DeltaTemperature(10.0), 0.39);
         assert_eq!(state.temperature, None);
         assert_eq!(state.call_for(Change::DeltaTemperature(10.0)), None);
     }
@@ -330,9 +339,9 @@ mod tests {
     fn scrolling_down_stops_at_the_floor_not_at_off() {
         let mut state = parse_state(&on()).unwrap();
         for _ in 0..20 {
-            state.apply(Change::DeltaBrightness(-10.0));
+            state.apply(Change::DeltaBrightness(-10.0), 0.39);
         }
-        assert_eq!(state.brightness, Some(MIN_BRIGHTNESS));
+        assert_eq!(state.brightness, Some(0.39));
         assert_eq!(state.status, Status::On);
     }
 

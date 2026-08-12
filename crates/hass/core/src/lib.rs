@@ -11,6 +11,9 @@
 //! widget::Snapshot   the JSON line the bar reads back
 //! ```
 //!
+//! [`Config`] is where every number those four used to hold as a literal now
+//! comes from.
+//!
 //! The split from the daemon is the point of this crate: everything here is
 //! testable without a Home Assistant to talk to, and everything that owns a
 //! socket lives next door.
@@ -21,6 +24,9 @@
 //! name promised a simulation that was never there.
 
 pub mod api;
+pub mod config;
 pub mod lamp;
 pub mod proto;
 pub mod widget;
+
+pub use config::Config;

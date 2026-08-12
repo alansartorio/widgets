@@ -18,9 +18,6 @@ use serde::Serialize;
 use crate::lamp::{Change, LampState, Status};
 use crate::proto::Command;
 
-/// Percentage points per scroll notch.
-const STEP: f32 = 10.0;
-
 /// One line of JSON for the bar: `{"state":"on","type":"brightness","value":42}`.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 #[serde(tag = "state", rename_all = "lowercase")]
@@ -56,16 +53,19 @@ enum State {
 #[derive(Debug, Clone, Copy)]
 pub struct Widget {
     state: State,
+    /// Percentage points per scroll notch, from the config.
+    step: f32,
 }
 
 impl Widget {
     /// Start from what the lamp is doing, showing brightness if it is on.
-    pub fn new(lamp: &LampState) -> Self {
+    pub fn new(lamp: &LampState, step: f32) -> Self {
         Self {
             state: match lamp.status {
                 Status::On => State::On(Mode::Brightness),
                 Status::Off => State::Off,
             },
+            step,
         }
     }
 
@@ -81,8 +81,8 @@ impl Widget {
                     return None;
                 };
                 let delta = match command {
-                    Command::Increase => STEP,
-                    _ => -STEP,
+                    Command::Increase => self.step,
+                    _ => -self.step,
                 };
                 Some(match mode {
                     Mode::Brightness => Change::DeltaBrightness(delta),
@@ -134,6 +134,10 @@ mod tests {
     use super::*;
     use crate::lamp::Range;
 
+    /// What the config defaults to, and what the source this came from had as a
+    /// literal in this file.
+    const STEP: f32 = 10.0;
+
     fn lamp_on() -> LampState {
         LampState {
             status: Status::On,
@@ -157,7 +161,7 @@ mod tests {
     /// temperature, and clicks toggle the lamp.
     #[test]
     fn a_scroll_means_whichever_mode_the_pill_is_in() {
-        let mut widget = Widget::new(&lamp_on());
+        let mut widget = Widget::new(&lamp_on(), STEP);
 
         assert_eq!(
             widget.apply(Command::Increase),
@@ -173,17 +177,21 @@ mod tests {
     }
 
     #[test]
-    fn a_scroll_down_is_the_step_the_other_way() {
-        let mut widget = Widget::new(&lamp_on());
+    fn the_step_is_the_configured_one_in_both_directions() {
+        let mut widget = Widget::new(&lamp_on(), 2.5);
+        assert_eq!(
+            widget.apply(Command::Increase),
+            Some(Change::DeltaBrightness(2.5))
+        );
         assert_eq!(
             widget.apply(Command::Decrease),
-            Some(Change::DeltaBrightness(-STEP))
+            Some(Change::DeltaBrightness(-2.5))
         );
     }
 
     #[test]
     fn scrolling_an_off_pill_does_nothing_at_all() {
-        let mut widget = Widget::new(&lamp_off());
+        let mut widget = Widget::new(&lamp_off(), STEP);
         assert_eq!(widget.apply(Command::Increase), None);
         assert_eq!(widget.apply(Command::ToggleMode), None);
         // And it is still off afterwards, rather than having been switched by a
@@ -193,7 +201,7 @@ mod tests {
 
     #[test]
     fn turning_it_on_shows_brightness_first() {
-        let mut widget = Widget::new(&lamp_off());
+        let mut widget = Widget::new(&lamp_off(), STEP);
         widget.apply(Command::ToggleState);
         assert_eq!(
             widget.snapshot(&lamp_on()),
@@ -226,7 +234,7 @@ mod tests {
             brightness: None,
             ..lamp_on()
         };
-        let widget = Widget::new(&settling);
+        let widget = Widget::new(&settling, STEP);
         assert_eq!(widget.snapshot(&settling), Snapshot::On(Reading::Loading));
     }
 }

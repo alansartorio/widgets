@@ -10,22 +10,24 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use serde_json::Value;
 
-/// Well under anything that waits on it, so a hung request cannot pin the
-/// thread that made it.
+/// What the config defaults to: well under anything that waits on a request, so
+/// a hung one cannot pin the thread that made it.
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug)]
 pub struct Client {
     base: String,
     token: String,
+    timeout: Duration,
 }
 
 impl Client {
-    pub fn new(base: &str, token: String) -> Self {
+    pub fn new(base: &str, token: String, timeout: Duration) -> Self {
         Self {
             // Trailing slashes would double up in every request path.
             base: base.trim_end_matches('/').to_string(),
             token,
+            timeout,
         }
     }
 
@@ -34,7 +36,7 @@ impl Client {
         let body = widgets_http::Request::get(format!("{}/api/states/{entity_id}", self.base))
             .bearer(&self.token)
             .accept_json()
-            .timeout(REQUEST_TIMEOUT)
+            .timeout(self.timeout)
             .send()
             .with_context(|| format!("asking Home Assistant about {entity_id}"))?
             .success()?;
@@ -50,7 +52,7 @@ impl Client {
             payload,
         )
         .bearer(&self.token)
-        .timeout(REQUEST_TIMEOUT)
+        .timeout(self.timeout)
         .send()
         .with_context(|| format!("calling {domain}.{service}"))?
         .success()?;

@@ -11,45 +11,27 @@
 //!  eww  ◀──socat UNIX-CLIENT──  the state socket    (stream)     one JSON line per change
 //! ```
 //!
-//! The entity and both paths are still literals here; that is the next commit.
+//! Nothing here is a literal any more: the entity, both socket paths, the step
+//! per notch, the brightness floor and the two settle numbers all come off
+//! [`Config`], and the token comes off disk rather than out of the environment.
 
 use std::io::Write;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use anyhow::{Context, Result};
-use hass_core::api::Client;
+use hass_core::Config;
+use hass_core::config::SOCKET_MODE;
 use hass_core::lamp::{Lamp, LampState};
 use hass_core::proto::Command;
 use hass_core::widget::{Snapshot, Widget};
-
-const ENTITY: &str = "light.desk_lamp";
-const COMMAND_SOCKET: &str = "/tmp/hass-light.sock";
-const STATE_SOCKET: &str = "/tmp/hass-light-eww-output.sock";
 
 /// The longest datagram worth reading. The longest command is `toggle_state`;
 /// anything past this is truncated and then fails to parse, which is the right
 /// answer for a sender this program does not recognise.
 const MAX_COMMAND: usize = 64;
-
-/// Per-user: nothing else on the machine has any business watching this
-/// session's lamp be dimmed.
-const SOCKET_MODE: u32 = 0o600;
-
-/// How long to wait between polls while a lamp that was just switched on has
-/// not reported a brightness yet.
-const SETTLE_POLL: Duration = Duration::from_millis(100);
-
-/// How long to keep asking before giving up and leaving the pill on `loading`
-/// until the next command.
-///
-/// There was no ceiling here, and the loop's exit condition was the lamp
-/// reporting itself on — so a bulb that answers "off" because it never came up,
-/// or one behind a Home Assistant that stops answering mid-poll, meant ten
-/// requests a second for as long as the daemon lived.
-const SETTLE_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// The widget and the lamp, which only ever change together.
 struct Bar {
@@ -108,14 +90,18 @@ fn main() {
 }
 
 fn run() -> Result<()> {
-    let host = std::env::var("HASS_HOST").context("please set up the HASS_HOST env variable")?;
-    let token = std::env::var("HASS_TOKEN").context("please set up the HASS_TOKEN env variable")?;
+    let config = Config::load()?.context(
+        "no config: expected one of the paths hass_core::Config::search_paths lists, \
+         or $HASS_CONFIG",
+    )?;
 
-    let lamp = Lamp::new(Client::new(&host, token), ENTITY.to_owned());
+    let lamp = config.lamp()?;
+    let command_socket = config.command_socket();
+    let state_socket = config.state_socket();
     tracing::info!(
         entity = lamp.entity_id(),
-        commands = COMMAND_SOCKET,
-        state = STATE_SOCKET,
+        commands = %command_socket.display(),
+        state = %state_socket.display(),
         "starting"
     );
 
@@ -127,12 +113,12 @@ fn run() -> Result<()> {
     // widgets_ipc rather than std: it creates the parent directory, unlinks a
     // socket a killed daemon left behind — which makes bind fail with EADDRINUSE
     // even though nothing is listening — and sets the mode.
-    let commands = widgets_ipc::bind_datagram(std::path::Path::new(COMMAND_SOCKET), SOCKET_MODE)?;
-    let listener = widgets_ipc::bind(std::path::Path::new(STATE_SOCKET), SOCKET_MODE)?;
+    let commands = widgets_ipc::bind_datagram(&command_socket, SOCKET_MODE)?;
+    let listener = widgets_ipc::bind(&state_socket, SOCKET_MODE)?;
 
     let initial = lamp.state()?;
     let bar = Arc::new(Mutex::new(Bar {
-        widget: Widget::new(&initial),
+        widget: Widget::new(&initial, config.step()),
         lamp: initial,
     }));
     let subscribers = Arc::new(Subscribers::default());
@@ -149,7 +135,7 @@ fn run() -> Result<()> {
     loop {
         let read = commands
             .recv(&mut buf)
-            .with_context(|| format!("reading {COMMAND_SOCKET}"))?;
+            .with_context(|| format!("reading {}", command_socket.display()))?;
 
         let raw = String::from_utf8_lossy(&buf[..read]);
         let command = match Command::parse(&raw) {
@@ -162,7 +148,7 @@ fn run() -> Result<()> {
             }
         };
 
-        handle(command, &lamp, &bar, &subscribers);
+        handle(command, &config, &lamp, &bar, &subscribers);
     }
 }
 
@@ -173,7 +159,13 @@ fn run() -> Result<()> {
 /// the scroll rather than at the speed of the network. A failed request means the
 /// pill is briefly optimistic about a lamp that did not move, which the next read
 /// corrects — the alternative is a widget that feels broken every time.
-fn handle(command: Command, lamp: &Lamp, bar: &Mutex<Bar>, subscribers: &Subscribers) {
+fn handle(
+    command: Command,
+    config: &Config,
+    lamp: &Lamp,
+    bar: &Mutex<Bar>,
+    subscribers: &Subscribers,
+) {
     let mut bar = bar.lock().unwrap();
 
     let Some(change) = bar.widget.apply(command) else {
@@ -183,7 +175,7 @@ fn handle(command: Command, lamp: &Lamp, bar: &Mutex<Bar>, subscribers: &Subscri
         return;
     };
 
-    bar.lamp.apply(change);
+    bar.lamp.apply(change, lamp.min_brightness());
     subscribers.publish(bar.snapshot());
 
     if let Some(call) = bar.lamp.call_for(change)
@@ -196,14 +188,14 @@ fn handle(command: Command, lamp: &Lamp, bar: &Mutex<Bar>, subscribers: &Subscri
     // reached one, so the pill says `loading` until a read comes back with a
     // number.
     if bar.lamp.is_settling() {
-        settle(lamp, &mut bar, subscribers);
+        settle(config, lamp, &mut bar, subscribers);
     }
 }
 
-/// Re-read the lamp until it reports the value the pill wants, or until
-/// [`SETTLE_TIMEOUT`].
-fn settle(lamp: &Lamp, bar: &mut Bar, subscribers: &Subscribers) {
-    let deadline = Instant::now() + SETTLE_TIMEOUT;
+/// Re-read the lamp until it reports the value the pill wants, or until the
+/// configured settle timeout.
+fn settle(config: &Config, lamp: &Lamp, bar: &mut Bar, subscribers: &Subscribers) {
+    let deadline = Instant::now() + config.settle_timeout();
 
     while bar.lamp.is_settling() {
         match lamp.state() {
@@ -220,7 +212,7 @@ fn settle(lamp: &Lamp, bar: &mut Bar, subscribers: &Subscribers) {
         if !bar.lamp.is_settling() || Instant::now() >= deadline {
             break;
         }
-        thread::sleep(SETTLE_POLL);
+        thread::sleep(config.settle_poll_interval());
     }
 }
 
