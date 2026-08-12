@@ -55,6 +55,11 @@ impl Bar {
 }
 
 /// Everyone currently reading the state socket.
+///
+/// A write that fails drops the client. That is not a refinement: every accepted
+/// stream used to be pushed onto this list and its write errors ignored forever,
+/// so each eww reload left a dead connection behind and the list grew for as long
+/// as the process lived — which for this daemon is weeks.
 #[derive(Default)]
 struct Subscribers {
     clients: Mutex<Vec<UnixStream>>,
@@ -67,9 +72,10 @@ impl Subscribers {
 
     fn publish(&self, snapshot: Snapshot) {
         let line = line(snapshot);
-        for client in self.clients.lock().unwrap().iter_mut() {
-            let _ = client.write_all(line.as_bytes());
-        }
+        self.clients
+            .lock()
+            .unwrap()
+            .retain_mut(|client| client.write_all(line.as_bytes()).is_ok());
     }
 }
 
