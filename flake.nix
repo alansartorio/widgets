@@ -22,24 +22,26 @@
         lib = nixpkgs.lib;
         craneLib = crane.mkLib pkgs;
 
-        # rusqlite is `bundled` and notify-rust talks D-Bus through zbus, so
-        # there is no libsqlite3 and no libdbus here and neither is missing.
+        # Everything with a C library in nixpkgs links that one, and nothing here
+        # compiles a copy of its own. `widgets-http` takes libcurl instead of an
+        # HTTP stack in Rust, rusqlite takes libsqlite3 instead of building the
+        # amalgamation, and notify-rust takes libdbus instead of zbus.
         #
-        # curl and openssl are the deliberate exception to "no system
-        # libraries": `widgets-http` links nixpkgs' libcurl instead of compiling
-        # an HTTP stack, which is what keeps rustls, hyper and their dependency
-        # trees out of every cold build. pkg-config is what curl-sys finds it
-        # with — without it, curl-sys quietly falls back to building the C
-        # sources from its vendored copy, which is slower than the Rust stack it
-        # replaced. openssl comes with the `curl` crate's default `ssl` feature:
-        # bindings and cert probing, no TLS implementation compiled here.
+        # pkg-config is what all three are found with, and it is load-bearing
+        # rather than tidy: without it in nativeBuildInputs, curl-sys and
+        # libsqlite3-sys do not fail — they quietly fall back to compiling their
+        # vendored C sources, which is the thing this arrangement exists to avoid.
+        # openssl comes with the `curl` crate's default `ssl` feature: bindings
+        # and cert probing, no TLS implementation compiled here.
         nativeBuildInputs = with pkgs; [ pkg-config ];
         buildInputs = with pkgs; [
           curl
+          dbus
           glib
           gtk4
           gtk4-layer-shell
           openssl
+          sqlite
           wayland
           wayland-protocols
         ];

@@ -54,15 +54,19 @@ serde_json = "1"
 # support behind a feature. Nothing here needs that, and 1.x keeps the framing
 # in `widgets-ipc` down to two lines.
 bincode = "1"
-# `bundled` compiles SQLite into the binary, so there is no libsqlite3 to find
-# at build time and no version skew with the host's.
+# nixpkgs' SQLite, found with pkg-config. `bundled` used to compile the
+# amalgamation — a quarter of a million lines of C — on every cold build, to
+# arrive at a library the closure already contains.
 #
 # 0.40 rather than the 0.31 claude-usage used to pin: one workspace means one
 # version, and taking the newer of the two is the direction that does not
 # silently downgrade timers.
-rusqlite = { version = "0.40", features = ["bundled"] }
-# v4 talks D-Bus through zbus, which is pure Rust — no libdbus in buildInputs.
-notify-rust = "4"
+rusqlite = "0.40"
+# `d` rather than the default `z`: libdbus from nixpkgs instead of zbus, which
+# is a reimplementation of the D-Bus protocol in Rust. All this sends is one
+# Notify call to whatever is on the session bus, and the bus's own library is
+# the thing that has to agree with it.
+notify-rust = { version = "4", default-features = false, features = ["d"] }
 # nixpkgs' libcurl through its bindings, and no HTTP stack compiled from
 # source. Only `widgets-http` names this; everything else goes through that.
 # `static-curl` stays off so curl-sys finds the system library with pkg-config
