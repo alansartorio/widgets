@@ -79,7 +79,10 @@
             gtk = true;
           };
 
-          # No default. This flake ships nine binaries and no one of them is
+          # Straight out of its own repo, unchanged, name and all.
+          hass-light-eww = mkBin { name = "hass-light-eww"; };
+
+          # No default. This flake ships ten binaries and no one of them is
           # the point of it; `nix build` with no attribute should say so rather
           # than pick one at random.
         };
