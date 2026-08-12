@@ -1,0 +1,20 @@
+[package]
+name = "hass-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "hass_core"
+path = "src/lib.rs"
+
+# Everything the daemon does apart from owning sockets: the HTTP client, the
+# lamp, and the widget's state machine. Split out for the same reason kimai's
+# is — the state machine is the part worth testing, and it must not need a Home
+# Assistant to talk to.
+[dependencies]
+widgets-http.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true

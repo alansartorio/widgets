@@ -88,8 +88,9 @@
             gtk = true;
           };
 
-          # Straight out of its own repo, unchanged, name and all.
-          hass-light-eww = mkBin { name = "hass-light-eww"; };
+          # No CLI and no GUI: the pill is the whole interface, and the bar
+          # reaches it through the socket rather than through a binary of ours.
+          hass-daemon = mkBin { name = "hass-daemon"; };
 
           # No default. This flake ships ten binaries and no one of them is
           # the point of it; `nix build` with no attribute should say so rather

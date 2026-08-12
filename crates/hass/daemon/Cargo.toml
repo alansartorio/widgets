@@ -1,20 +1,17 @@
 [package]
-name = "hass-light-eww"
+name = "hass-daemon"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "hass-light-eww"
+name = "hass-daemon"
 path = "src/main.rs"
 
-# The workspace's dependencies now, and one fewer of them than the async stack
-# it replaces: no tokio, no tokio-stream, no reqwest, no url.
 [dependencies]
-widgets-http.workspace = true
+hass-core = { path = "../core" }
+widgets-ipc.workspace = true
 anyhow.workspace = true
-serde.workspace = true
 serde_json.workspace = true
-serde_plain = "1"
 tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter"] }

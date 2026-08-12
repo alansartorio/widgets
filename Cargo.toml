@@ -23,7 +23,8 @@ members = [
   "crates/kimai/cli",
   "crates/kimai/gui",
   "crates/calendar/gui",
-  "crates/hass",
+  "crates/hass/core",
+  "crates/hass/daemon",
 ]
 
 [workspace.package]
