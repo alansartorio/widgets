@@ -9,7 +9,10 @@
 //!
 //! The mired attributes (`color_temp`, `min_mireds`, `max_mireds`) are Home
 //! Assistant's older spelling — newer versions also carry `*_kelvin` forms — and
-//! they are what the instance this was written against sends.
+//! they are what the instance this was written against sends. They are read
+//! defensively rather than unwrapped: a lamp that dims but has no colour
+//! temperature reports none of them, and that should cost the pill its
+//! temperature mode, not the daemon its life.
 //!
 //! `lamp_simulator` used to be a module of its own for [`LampState`] and its two
 //! methods. It is here: it is the lamp's state, and nothing was ever simulated.
@@ -73,7 +76,8 @@ pub struct LampState {
     pub brightness: Option<f32>,
     /// Percent of `temperature_range`, or `None` as above.
     pub temperature: Option<f32>,
-    pub temperature_range: Range,
+    /// `None` for a lamp with no colour temperature at all.
+    pub temperature_range: Option<Range>,
 }
 
 /// A change to make, in the widget's terms rather than Home Assistant's.
@@ -149,19 +153,24 @@ impl LampState {
     /// state rather than as the delta, because Home Assistant has no relative
     /// form for either — and because two scroll notches arriving faster than the
     /// round trip should send the sum, not the last one twice.
-    pub fn call_for(&self, change: Change) -> Call {
-        match change {
+    ///
+    /// `None` means there is nothing to send: a lamp with no colour temperature
+    /// asked to change its colour temperature, or one whose brightness is still
+    /// unknown. Both were an unwrap, and the second one is reachable by scrolling
+    /// during the moment after a lamp comes on.
+    pub fn call_for(&self, change: Change) -> Option<Call> {
+        Some(match change {
             Change::TurnOn => Call::On,
             Change::TurnOff => Call::Off,
-            Change::DeltaBrightness(_) => Call::OnWithBrightness(self.brightness.unwrap()),
-            Change::DeltaTemperature(_) => Call::OnWithTemperature(self.mireds().unwrap()),
-        }
+            Change::DeltaBrightness(_) => Call::OnWithBrightness(self.brightness?),
+            Change::DeltaTemperature(_) => Call::OnWithTemperature(self.mireds()?),
+        })
     }
 
-    /// The colour temperature in mireds.
+    /// The colour temperature in mireds, for a lamp that has one.
     pub fn mireds(&self) -> Option<f32> {
-        self.temperature
-            .map(|percent| self.temperature_range.to_mireds(percent))
+        let range = self.temperature_range?;
+        self.temperature.map(|percent| range.to_mireds(percent))
     }
 
     /// On, but not yet reporting the value the pill wants to show.
@@ -204,30 +213,46 @@ impl Lamp {
 }
 
 /// Turn one `/api/states/<entity>` object into a [`LampState`].
+///
+/// Anything but `on` counts as off, `unavailable` and `unknown` included: a lamp
+/// nobody can reach is one the pill should show as off rather than as a state it
+/// has no glyph for. The version this replaces reached `unreachable!()` on both.
 fn parse_state(data: &Value) -> Result<LampState> {
     let attributes = &data["attributes"];
-    let min_temp = attributes["min_mireds"].as_f64().unwrap() as f32;
-    let max_temp = attributes["max_mireds"].as_f64().unwrap() as f32;
-    let temperature_range = Range::new(min_temp, max_temp);
+    let attr = |name: &str| {
+        attributes
+            .get(name)
+            .and_then(Value::as_f64)
+            .map(|v| v as f32)
+    };
 
-    Ok(match data["state"].as_str().context("no state field")? {
-        "off" => LampState {
+    let temperature_range = match (attr("min_mireds"), attr("max_mireds")) {
+        (Some(min), Some(max)) => Some(Range::new(min, max)),
+        _ => None,
+    };
+
+    let on = data
+        .get("state")
+        .and_then(Value::as_str)
+        .context("no state field")?
+        == "on";
+
+    if !on {
+        return Ok(LampState {
             status: Status::Off,
             brightness: None,
             temperature: None,
             temperature_range,
-        },
-        "on" => LampState {
-            status: Status::On,
-            brightness: Some(
-                attributes["brightness"].as_f64().unwrap() as f32 * 100.0 / BRIGHTNESS_MAX,
-            ),
-            temperature: Some(
-                temperature_range.to_percent(attributes["color_temp"].as_f64().unwrap() as f32),
-            ),
-            temperature_range,
-        },
-        other => anyhow::bail!("unexpected state {other:?}"),
+        });
+    }
+
+    Ok(LampState {
+        status: Status::On,
+        brightness: attr("brightness").map(|raw| raw * 100.0 / BRIGHTNESS_MAX),
+        temperature: temperature_range
+            .zip(attr("color_temp"))
+            .map(|(range, mireds)| range.to_percent(mireds)),
+        temperature_range,
     })
 }
 
@@ -270,7 +295,35 @@ mod tests {
         .unwrap();
         assert_eq!(state.status, Status::Off);
         assert_eq!(state.brightness, None);
-        assert_eq!(state.temperature_range, Range::new(153.0, 500.0));
+        assert_eq!(state.temperature_range, Some(Range::new(153.0, 500.0)));
+    }
+
+    #[test]
+    fn an_unavailable_lamp_reads_as_off_rather_than_panicking() {
+        let state = parse_state(&json!({ "state": "unavailable", "attributes": {} })).unwrap();
+        assert_eq!(state.status, Status::Off);
+        assert_eq!(state.temperature_range, None);
+    }
+
+    #[test]
+    fn a_lamp_that_is_on_without_a_brightness_yet_is_settling() {
+        let state = parse_state(&json!({ "state": "on", "attributes": {} })).unwrap();
+        assert!(state.is_settling());
+        // And nothing is sent for a scroll while it is: there is no number to
+        // add ten percent to.
+        assert_eq!(state.call_for(Change::DeltaBrightness(10.0)), None);
+    }
+
+    #[test]
+    fn a_lamp_without_a_mired_span_ignores_temperature_changes() {
+        let mut state = parse_state(&json!({
+            "state": "on",
+            "attributes": { "brightness": 128 }
+        }))
+        .unwrap();
+        state.apply(Change::DeltaTemperature(10.0));
+        assert_eq!(state.temperature, None);
+        assert_eq!(state.call_for(Change::DeltaTemperature(10.0)), None);
     }
 
     #[test]

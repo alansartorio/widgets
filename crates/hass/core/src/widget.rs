@@ -139,7 +139,7 @@ mod tests {
             status: Status::On,
             brightness: Some(50.0),
             temperature: Some(50.0),
-            temperature_range: Range::new(153.0, 500.0),
+            temperature_range: Some(Range::new(153.0, 500.0)),
         }
     }
 
@@ -148,7 +148,7 @@ mod tests {
             status: Status::Off,
             brightness: None,
             temperature: None,
-            temperature_range: Range::new(153.0, 500.0),
+            temperature_range: Some(Range::new(153.0, 500.0)),
         }
     }
 

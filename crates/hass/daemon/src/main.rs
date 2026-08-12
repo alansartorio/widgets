@@ -14,7 +14,7 @@ use std::io::{BufRead, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use hass_core::api::Client;
@@ -32,6 +32,15 @@ const SOCKET_MODE: u32 = 0o600;
 /// How long to wait between polls while a lamp that was just switched on has
 /// not reported a brightness yet.
 const SETTLE_POLL: Duration = Duration::from_millis(100);
+
+/// How long to keep asking before giving up and leaving the pill on `loading`
+/// until the next command.
+///
+/// There was no ceiling here, and the loop's exit condition was the lamp
+/// reporting itself on — so a bulb that answers "off" because it never came up,
+/// or one behind a Home Assistant that stops answering mid-poll, meant ten
+/// requests a second for as long as the daemon lived.
+const SETTLE_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// The widget and the lamp, which only ever change together.
 struct Bar {
@@ -148,27 +157,41 @@ fn handle(command: Command, lamp: &Lamp, bar: &Mutex<Bar>, subscribers: &Subscri
     bar.lamp.apply(change);
     subscribers.publish(bar.snapshot());
 
-    if let Err(e) = lamp.send(bar.lamp.call_for(change)) {
+    if let Some(call) = bar.lamp.call_for(change)
+        && let Err(e) = lamp.send(call)
+    {
         tracing::warn!("{e:#}");
     }
 
     // A lamp that was just switched on reports no brightness until it has
-    // reached one, so keep asking until it says it is on.
+    // reached one, so the pill says `loading` until a read comes back with a
+    // number.
     if bar.lamp.is_settling() {
-        loop {
-            match lamp.state() {
-                Ok(fresh) => bar.lamp = fresh,
-                Err(e) => {
-                    tracing::warn!("{e:#}");
-                    break;
-                }
+        settle(lamp, &mut bar, subscribers);
+    }
+}
+
+/// Re-read the lamp until it reports the value the pill wants, or until
+/// [`SETTLE_TIMEOUT`].
+fn settle(lamp: &Lamp, bar: &mut Bar, subscribers: &Subscribers) {
+    let deadline = Instant::now() + SETTLE_TIMEOUT;
+
+    while bar.lamp.is_settling() {
+        match lamp.state() {
+            Ok(fresh) => {
+                bar.lamp = fresh;
+                subscribers.publish(bar.snapshot());
             }
-            if bar.lamp.status == hass_core::lamp::Status::On {
+            Err(e) => {
+                tracing::warn!("{e:#}");
                 break;
             }
-            thread::sleep(SETTLE_POLL);
         }
-        subscribers.publish(bar.snapshot());
+
+        if !bar.lamp.is_settling() || Instant::now() >= deadline {
+            break;
+        }
+        thread::sleep(SETTLE_POLL);
     }
 }
 
