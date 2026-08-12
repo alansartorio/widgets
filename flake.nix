@@ -66,6 +66,19 @@
             gtk = true;
           };
 
+          # No daemon: kimai keeps nothing between polls that Kimai is not
+          # already the authority on.
+          kimai = mkBin { name = "kimai"; };
+          kimai-gui = mkBin {
+            name = "kimai-gui";
+            gtk = true;
+          };
+
+          calendar-gui = mkBin {
+            name = "calendar-gui";
+            gtk = true;
+          };
+
           # No default. This flake ships nine binaries and no one of them is
           # the point of it; `nix build` with no attribute should say so rather
           # than pick one at random.

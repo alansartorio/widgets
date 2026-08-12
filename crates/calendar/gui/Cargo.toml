@@ -1,0 +1,22 @@
+[package]
+name = "calendar-gui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "calendar-gui"
+path = "src/main.rs"
+
+# relm4 is named here as well as in widgets-gtkui, and both take it from the
+# workspace, so there is one relm4 and one gtk4 in the binary — two gtk4 crates
+# in one binary do not link. The layer-shell binding comes through
+# widgets-gtkui alone, which is the only thing that touches it.
+#
+# No kimai here, deliberately: this window shows a calendar and its feriados,
+# and works on a machine with no Kimai at all.
+[dependencies]
+holidays.workspace = true
+widgets-gtkui.workspace = true
+chrono.workspace = true
+relm4.workspace = true

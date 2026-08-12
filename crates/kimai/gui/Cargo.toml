@@ -1,0 +1,21 @@
+[package]
+name = "kimai-gui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "kimai-gui"
+path = "src/main.rs"
+
+# relm4 is named here as well as in widgets-gtkui, and both take it from the
+# workspace, so there is one relm4 and one gtk4 in the binary — two gtk4 crates
+# in one binary do not link. The layer-shell binding comes through
+# widgets-gtkui alone, which is the only thing that touches it.
+[dependencies]
+kimai-core = { path = "../core" }
+widgets-gtkui.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+serde_json.workspace = true
+relm4.workspace = true

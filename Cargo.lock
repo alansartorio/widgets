@@ -248,6 +248,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "calendar-gui"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "holidays",
+ "relm4",
+ "widgets-gtkui",
+]
+
+[[package]]
 name = "cc"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1083,6 +1093,18 @@ dependencies = [
  "serde_json",
  "toml_edit 0.23.10+spec-1.0.0",
  "widgets-paths",
+]
+
+[[package]]
+name = "kimai-gui"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "kimai-core",
+ "relm4",
+ "serde_json",
+ "widgets-gtkui",
 ]
 
 [[package]]

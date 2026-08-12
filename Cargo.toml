@@ -20,6 +20,8 @@ members = [
   "crates/kimai/api",
   "crates/kimai/core",
   "crates/kimai/cli",
+  "crates/kimai/gui",
+  "crates/calendar/gui",
 ]
 
 [workspace.package]
