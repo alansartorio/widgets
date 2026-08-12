@@ -65,7 +65,10 @@ impl Calendar {
         let first = NaiveDate::from_ymd_opt(year, month, 1).unwrap_or_else(|| {
             // Only reachable with a month outside 1..=12, which the callers
             // clamp; falling back to today beats a panic in a repaint.
-            Local::now().date_naive().with_day(1).expect("the 1st exists")
+            Local::now()
+                .date_naive()
+                .with_day(1)
+                .expect("the 1st exists")
         });
         let today = Local::now().date_naive();
         let week_start = self.week().week_start;

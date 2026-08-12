@@ -192,7 +192,10 @@ mod tests {
     #[test]
     fn a_frame_round_trips() {
         let bytes = encode(&("hola", 42u32)).unwrap();
-        assert_eq!(bytes.len() - LEN_HEADER, u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize);
+        assert_eq!(
+            bytes.len() - LEN_HEADER,
+            u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize
+        );
 
         let mut cursor = std::io::Cursor::new(bytes);
         let back: (String, u32) = read_frame(&mut cursor, 1024).unwrap();

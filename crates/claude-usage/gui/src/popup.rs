@@ -276,10 +276,10 @@ impl Component for Popup {
                 // Only from a day, and only to a date that exists — the checked
                 // add is what keeps a held-down ‹ from panicking at the end of
                 // the calendar rather than simply stopping.
-                if let View::Day(day) = self.view {
-                    if let Some(day) = day.checked_add_signed(Duration::days(days)) {
-                        self.show(View::Day(day));
-                    }
+                if let View::Day(day) = self.view
+                    && let Some(day) = day.checked_add_signed(Duration::days(days))
+                {
+                    self.show(View::Day(day));
                 }
             }
             PopupMsg::Drill(x) => {

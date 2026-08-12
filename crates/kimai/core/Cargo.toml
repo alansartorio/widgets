@@ -1,0 +1,19 @@
+[package]
+name = "kimai-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "kimai_core"
+path = "src/lib.rs"
+
+[dependencies]
+kimai-api = { path = "../api" }
+holidays.workspace = true
+widgets-paths.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml_edit.workspace = true

@@ -1050,6 +1050,42 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 
 [[package]]
+name = "kimai-api"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "serde",
+ "serde_json",
+ "ureq",
+]
+
+[[package]]
+name = "kimai-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "holidays",
+ "kimai-core",
+ "serde_json",
+]
+
+[[package]]
+name = "kimai-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "holidays",
+ "kimai-api",
+ "serde",
+ "serde_json",
+ "toml_edit 0.23.10+spec-1.0.0",
+ "widgets-paths",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

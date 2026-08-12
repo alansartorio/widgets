@@ -10,7 +10,7 @@
 //! Ported from the old `get-claude-usage` rust-script, minus the home-directory
 //! fallbacks that don't apply to a dedicated service user.
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Local};
 use serde::Serialize;
 use std::fs;
@@ -108,10 +108,10 @@ fn read_token(credentials_path: &std::path::Path) -> Option<String> {
     }
     let parsed: serde_json::Value = serde_json::from_str(text).ok()?;
     let oauth = &parsed["claudeAiOauth"];
-    if let Some(expires_at) = oauth["expiresAt"].as_i64() {
-        if expires_at / 1000 < now_secs() as i64 {
-            return None;
-        }
+    if let Some(expires_at) = oauth["expiresAt"].as_i64()
+        && expires_at / 1000 < now_secs() as i64
+    {
+        return None;
     }
     oauth["accessToken"].as_str().map(str::to_string)
 }
@@ -136,12 +136,11 @@ fn refresh_token(
     stamp_path: &std::path::Path,
     force: bool,
 ) -> Result<()> {
-    if !force {
-        if let Some(age) = age_of(stamp_path) {
-            if age < REFRESH_MIN_INTERVAL {
-                return Err(anyhow!("last refresh attempt was {age}s ago"));
-            }
-        }
+    if !force
+        && let Some(age) = age_of(stamp_path)
+        && age < REFRESH_MIN_INTERVAL
+    {
+        return Err(anyhow!("last refresh attempt was {age}s ago"));
     }
     if let Some(parent) = stamp_path.parent() {
         fs::create_dir_all(parent)?;
@@ -186,10 +185,10 @@ fn token_from(credentials: &str) -> Option<String> {
     }
     let parsed: serde_json::Value = serde_json::from_str(credentials).ok()?;
     let oauth = &parsed["claudeAiOauth"];
-    if let Some(expires_at) = oauth["expiresAt"].as_i64() {
-        if expires_at / 1000 < now_secs() as i64 {
-            return None;
-        }
+    if let Some(expires_at) = oauth["expiresAt"].as_i64()
+        && expires_at / 1000 < now_secs() as i64
+    {
+        return None;
     }
     oauth["accessToken"].as_str().map(str::to_string)
 }
@@ -252,12 +251,11 @@ pub fn poll(
         && refresh_token(credentials_path, stamp_path, force_refresh)
             .map_err(|e| tracing::warn!("token refresh: {e:#}"))
             .is_ok()
+        && let Some(token) = read_token(credentials_path)
     {
-        if let Some(token) = read_token(credentials_path) {
-            answer = ask_endpoint(&token)
-                .map_err(|e| tracing::warn!("request after refresh failed: {e:#}"))
-                .ok();
-        }
+        answer = ask_endpoint(&token)
+            .map_err(|e| tracing::warn!("request after refresh failed: {e:#}"))
+            .ok();
     }
 
     let answer = match answer {

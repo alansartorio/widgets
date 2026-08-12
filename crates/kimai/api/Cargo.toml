@@ -1,0 +1,19 @@
+[package]
+name = "kimai-api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "kimai_api"
+path = "src/lib.rs"
+
+# Deliberately thin: an HTTP client and the shapes it returns, and nothing
+# about holidays, config files or output formats. That split is what lets the
+# aggregation in kimai-core be tested without a Kimai instance to talk to.
+[dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+ureq.workspace = true

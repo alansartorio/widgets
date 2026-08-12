@@ -57,9 +57,12 @@ impl Paths {
                 app,
                 || home().join(".local/state"),
             ),
-            config_dir: dir(&format!("{prefix}_CONFIG_DIR"), "XDG_CONFIG_HOME", app, || {
-                home().join(".config")
-            }),
+            config_dir: dir(
+                &format!("{prefix}_CONFIG_DIR"),
+                "XDG_CONFIG_HOME",
+                app,
+                || home().join(".config"),
+            ),
         }
     }
 
@@ -75,10 +78,7 @@ impl Paths {
             runtime_dir: fixed(&format!("{prefix}_RUNTIME_DIR"), runtime),
             // /etc/xdg is where a NixOS module drops a config for a service
             // that has no home directory to put one in.
-            config_dir: fixed(
-                &format!("{prefix}_CONFIG_DIR"),
-                &format!("/etc/xdg/{app}"),
-            ),
+            config_dir: fixed(&format!("{prefix}_CONFIG_DIR"), &format!("/etc/xdg/{app}")),
         }
     }
 
@@ -119,7 +119,9 @@ fn dir(
     if let Some(dir) = non_empty(override_var) {
         return PathBuf::from(dir);
     }
-    let base = non_empty(base_var).map(PathBuf::from).unwrap_or_else(fallback);
+    let base = non_empty(base_var)
+        .map(PathBuf::from)
+        .unwrap_or_else(fallback);
     base.join(app)
 }
 
@@ -157,9 +159,12 @@ mod tests {
     fn an_override_is_the_directory_not_its_parent() {
         // The whole point of the asymmetry: a scratch dir passed in by a test
         // or a hand-run daemon is used verbatim, with no leaf appended.
-        let got = dir("WIDGETS_TEST_UNSET_XX", "WIDGETS_TEST_BASE_XX", "timers", || {
-            PathBuf::from("/fallback")
-        });
+        let got = dir(
+            "WIDGETS_TEST_UNSET_XX",
+            "WIDGETS_TEST_BASE_XX",
+            "timers",
+            || PathBuf::from("/fallback"),
+        );
         assert_eq!(got, PathBuf::from("/fallback/timers"));
     }
 }

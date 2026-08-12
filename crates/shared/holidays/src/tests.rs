@@ -150,7 +150,10 @@ fn an_override_adds_a_day_the_api_never_heard_of() {
         .unwrap();
 
     assert!(!cal.is_working_day(d("2026-04-01")));
-    assert_eq!(cal.day(d("2026-04-01")).name.as_deref(), Some("Jueves Santo"));
+    assert_eq!(
+        cal.day(d("2026-04-01")).name.as_deref(),
+        Some("Jueves Santo")
+    );
 }
 
 #[test]
@@ -250,7 +253,11 @@ fn the_grid_names_its_holidays_and_classes_them() {
     assert_eq!(view.weekday_labels, ["L", "M", "M", "J", "V", "S", "D"]);
     assert!(!view.degraded);
 
-    let names: Vec<_> = view.holidays.iter().filter_map(|d| d.name.clone()).collect();
+    let names: Vec<_> = view
+        .holidays
+        .iter()
+        .filter_map(|d| d.name.clone())
+        .collect();
     assert!(names.iter().any(|n| n.contains("Trabajador")), "{names:?}");
     assert!(names.iter().any(|n| n.contains("Revolución")), "{names:?}");
 

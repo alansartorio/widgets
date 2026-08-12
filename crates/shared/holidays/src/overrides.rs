@@ -21,7 +21,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 use chrono::NaiveDate;
-use toml_edit::{DocumentMut, Item, Table, value};
+use toml_edit::{DocumentMut, Item, Key, Table, value};
 
 use crate::model::DayKind;
 
@@ -109,13 +109,23 @@ pub fn parse(raw: &str) -> Result<Overrides> {
 
 /// Add or replace one date, leaving every comment and every other row alone.
 pub fn set(path: &Path, date: NaiveDate, kind: DayKind, name: Option<&str>) -> Result<()> {
+    // Parsed from its quoted spelling rather than built from the bare string,
+    // which is the only public way to choose how a key is written back.
+    // `2026-04-03` is a legal bare key and round-trips either way — but this
+    // file is edited by hand as much as by us, and a machine-written row that
+    // looks unlike the ones in the header comment invites someone to "fix" one
+    // of them.
+    let key: Key = format!("\"{date}\"")
+        .parse()
+        .context("a date is always a valid TOML key")?;
+
     edit(path, |days| {
         let mut entry = toml_edit::InlineTable::new();
         entry.insert("kind", kind.as_str().into());
         if let Some(name) = name {
             entry.insert("name", name.into());
         }
-        days.insert(&date.to_string(), value(entry));
+        days.insert_formatted(&key, value(entry));
     })
 }
 

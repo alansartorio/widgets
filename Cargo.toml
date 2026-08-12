@@ -17,6 +17,9 @@ members = [
   "crates/claude-usage/daemon",
   "crates/claude-usage/cli",
   "crates/claude-usage/gui",
+  "crates/kimai/api",
+  "crates/kimai/core",
+  "crates/kimai/cli",
 ]
 
 [workspace.package]

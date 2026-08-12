@@ -61,4 +61,3 @@ pub enum Response {
     Chart(Chart),
     Error(String),
 }
-

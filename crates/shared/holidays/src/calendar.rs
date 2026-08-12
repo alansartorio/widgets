@@ -100,7 +100,8 @@ impl Calendar {
             Err(e) => {
                 // A typo in a hand-edited file must not take the widget down.
                 // Keep whatever was loaded before and say so.
-                self.coverage.last_error = Some(format!("{}: {e:#}", self.locations.overrides.display()));
+                self.coverage.last_error =
+                    Some(format!("{}: {e:#}", self.locations.overrides.display()));
             }
         }
     }
@@ -250,7 +251,9 @@ impl Calendar {
     pub fn is_working_day(&self, date: NaiveDate) -> bool {
         match self.day(date).kind {
             DayKind::ForcedWork => true,
-            DayKind::Bridge => self.week.bridges_are_working && self.week.is_workday(date.weekday()),
+            DayKind::Bridge => {
+                self.week.bridges_are_working && self.week.is_workday(date.weekday())
+            }
             other => other.is_working(&self.week),
         }
     }
@@ -284,11 +287,7 @@ impl Calendar {
     /// you start each working morning eight hours behind and reach zero when
     /// the day is done, so the number doubles as a to-do rather than a verdict
     /// on yesterday.
-    pub fn expected_through(
-        &self,
-        range: RangeInclusive<NaiveDate>,
-        today: NaiveDate,
-    ) -> Duration {
+    pub fn expected_through(&self, range: RangeInclusive<NaiveDate>, today: NaiveDate) -> Duration {
         let end = (*range.end()).min(today);
         if end < *range.start() {
             return Duration::zero();
