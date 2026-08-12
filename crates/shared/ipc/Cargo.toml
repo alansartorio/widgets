@@ -1,0 +1,14 @@
+[package]
+name = "widgets-ipc"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "widgets_ipc"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+bincode.workspace = true

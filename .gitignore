@@ -1,0 +1,11 @@
+/target
+# Both spellings: `nix build` writes `result`, but building more than one
+# attribute at once writes `result-1`, `result-2`, ... which `/result` does not
+# match. That gap got two of them committed to the claude-usage repo once.
+/result
+/result-*
+/.direnv
+/.envrc
+*.db
+*.db-shm
+*.db-wal

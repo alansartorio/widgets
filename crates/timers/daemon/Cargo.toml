@@ -1,0 +1,18 @@
+[package]
+name = "timers-daemon"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "timers-daemon"
+path = "src/main.rs"
+
+[dependencies]
+timers-core = { path = "../core" }
+widgets-ipc.workspace = true
+anyhow.workspace = true
+notify-rust.workspace = true
+rusqlite.workspace = true
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter"] }

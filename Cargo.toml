@@ -1,0 +1,72 @@
+[workspace]
+resolver = "3"
+# Listed rather than globbed. `crates/*/*` would work today, but a glob that
+# picks up a directory without a Cargo.toml fails with an error about a path
+# that looks nothing like the mistake, and thirteen lines are cheaper than
+# reading that error twice.
+members = [
+  "crates/shared/ipc",
+  "crates/shared/paths",
+  "crates/shared/gtkui",
+  "crates/timers/core",
+  "crates/timers/daemon",
+  "crates/timers/cli",
+  "crates/timers/gui",
+  "crates/claude-usage/core",
+  "crates/claude-usage/daemon",
+  "crates/claude-usage/cli",
+  "crates/claude-usage/gui",
+]
+
+[workspace.package]
+# The root of a virtual workspace has no `[package]` of its own, so this is the
+# only place a build of the whole workspace can read a version from — crane
+# looks here and falls back to a placeholder (with a warning) when it's missing.
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[workspace.dependencies]
+# The shared crates. Directory name and package name differ on purpose: the
+# tree is grouped by integration so a reader finds everything kimai in one
+# place, while cargo's namespace is flat and needs the prefix to stay unique.
+widgets-ipc = { path = "crates/shared/ipc" }
+widgets-paths = { path = "crates/shared/paths" }
+widgets-gtkui = { path = "crates/shared/gtkui" }
+holidays = { path = "crates/shared/holidays" }
+
+anyhow = "1"
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# bincode 1 on purpose: 2.x replaced `serialize`/`deserialize` with a
+# config-driven `encode_to_vec`/`decode_from_slice` and dropped blanket serde
+# support behind a feature. Nothing here needs that, and 1.x keeps the framing
+# in `widgets-ipc` down to two lines.
+bincode = "1"
+# `bundled` compiles SQLite into the binary, so there is no libsqlite3 to find
+# at build time and no version skew with the host's.
+#
+# 0.40 rather than the 0.31 claude-usage used to pin: one workspace means one
+# version, and taking the newer of the two is the direction that does not
+# silently downgrade timers.
+rusqlite = { version = "0.40", features = ["bundled"] }
+# v4 talks D-Bus through zbus, which is pure Rust — no libdbus in buildInputs.
+notify-rust = "4"
+# rustls rather than openssl. Linking the system copy bakes a store path into
+# the binary, and the next rebuild moves it out from under a process the bar
+# keeps running for days.
+ureq = { version = "3", default-features = false, features = ["rustls"] }
+# Reads and writes the holiday override file. toml_edit rather than toml
+# because `kimai holidays set` has to insert a row into a file a person wrote,
+# comments and all, and a parse-then-reserialise round trip eats them.
+toml_edit = { version = "0.23", features = ["serde"] }
+relm4 = "0.11"
+gtk4-layer-shell = "0.8"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

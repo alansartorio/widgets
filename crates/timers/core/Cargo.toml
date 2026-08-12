@@ -1,0 +1,18 @@
+[package]
+name = "timers-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "timers_core"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+widgets-ipc.workspace = true
+widgets-paths.workspace = true
+rusqlite.workspace = true

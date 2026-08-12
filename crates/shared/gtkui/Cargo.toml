@@ -1,0 +1,17 @@
+[package]
+name = "widgets-gtkui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "widgets_gtkui"
+path = "src/lib.rs"
+
+# gtk4, glib and gio come from relm4's re-exports rather than being named here,
+# which is what keeps their versions in step with the ones relm4 was built
+# against — two gtk4 crates in one binary do not link. Dependents get the same
+# relm4 through this crate's, so they cannot drift either.
+[dependencies]
+relm4.workspace = true
+gtk4-layer-shell.workspace = true
