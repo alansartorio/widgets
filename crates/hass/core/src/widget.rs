@@ -111,6 +111,15 @@ impl Widget {
         }
     }
 
+    /// Follow the lamp's own on/off, keeping the mode while both say on.
+    pub fn sync(&mut self, lamp: &LampState) {
+        self.state = match (self.state, lamp.status) {
+            (State::On(mode), Status::On) => State::On(mode),
+            (State::Off, Status::On) => State::On(Mode::Brightness),
+            (_, Status::Off) => State::Off,
+        };
+    }
+
     /// The line to publish, for this widget over that lamp.
     ///
     /// A missing value is [`Reading::Loading`] rather than a zero, because zero
@@ -206,6 +215,26 @@ mod tests {
         assert_eq!(
             widget.snapshot(&lamp_on()),
             Snapshot::On(Reading::Brightness(50.0))
+        );
+    }
+
+    #[test]
+    fn a_turn_on_that_never_landed_syncs_back_to_off() {
+        let mut widget = Widget::new(&lamp_off(), STEP);
+        widget.apply(Command::ToggleState);
+        assert_eq!(widget.snapshot(&lamp_off()), Snapshot::On(Reading::Loading));
+        widget.sync(&lamp_off());
+        assert_eq!(widget.snapshot(&lamp_off()), Snapshot::Off);
+    }
+
+    #[test]
+    fn syncing_an_on_pill_to_an_on_lamp_keeps_its_mode() {
+        let mut widget = Widget::new(&lamp_on(), STEP);
+        widget.apply(Command::ToggleMode);
+        widget.sync(&lamp_on());
+        assert_eq!(
+            widget.snapshot(&lamp_on()),
+            Snapshot::On(Reading::Temperature(50.0))
         );
     }
 

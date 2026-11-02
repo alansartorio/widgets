@@ -154,9 +154,10 @@ in
 
     settleTimeoutMs = lib.mkOption {
       type = lib.types.ints.positive;
-      default = 3000;
+      default = 10000;
       description = ''
-        How long to keep asking before giving up until the next command.
+        How long to keep asking, re-sending `turn_on` while the lamp reads as
+        off, before the pill falls back to whatever the lamp last reported.
 
         The binary this replaces had no ceiling: ten requests a second, forever,
         against a bulb that never answered.

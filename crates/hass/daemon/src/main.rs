@@ -19,12 +19,12 @@ use std::io::Write;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use hass_core::Config;
 use hass_core::config::SOCKET_MODE;
-use hass_core::lamp::{Lamp, LampState};
+use hass_core::lamp::{Call, Lamp, LampState, Status};
 use hass_core::proto::Command;
 use hass_core::widget::{Snapshot, Widget};
 
@@ -32,6 +32,19 @@ use hass_core::widget::{Snapshot, Widget};
 /// anything past this is truncated and then fails to parse, which is the right
 /// answer for a sender this program does not recognise.
 const MAX_COMMAND: usize = 64;
+
+/// Tries per service call, and the pause before the first retry, doubled each
+/// time after.
+const SEND_ATTEMPTS: u32 = 3;
+const SEND_BACKOFF: Duration = Duration::from_millis(250);
+
+/// Between attempts at the first read, so a Home Assistant that is not up yet
+/// costs a couple of seconds rather than the unit's restart delay.
+const STARTUP_RETRY: Duration = Duration::from_secs(2);
+
+/// How long a lamp may keep reading as off after a `turn_on` before it is asked
+/// again: the first command to a bulb that has been idle is often dropped.
+const RESEND_AFTER: Duration = Duration::from_secs(1);
 
 /// The widget and the lamp, which only ever change together.
 struct Bar {
@@ -107,8 +120,7 @@ fn run() -> Result<()> {
 
     // Both sockets before the first request, so a Home Assistant that is not up
     // yet cannot leave the bar's `socat` retrying against a path that does not
-    // exist. This process exits on that error and its unit restarts it; the paths
-    // existing in the meantime is what keeps the failure to one pill.
+    // exist.
     //
     // widgets_ipc rather than std: it creates the parent directory, unlinks a
     // socket a killed daemon left behind — which makes bind fail with EADDRINUSE
@@ -116,7 +128,16 @@ fn run() -> Result<()> {
     let commands = widgets_ipc::bind_datagram(&command_socket, SOCKET_MODE)?;
     let listener = widgets_ipc::bind(&state_socket, SOCKET_MODE)?;
 
-    let initial = lamp.state()?;
+    // Commands sent meanwhile queue on the socket and are handled after this.
+    let initial = loop {
+        match lamp.state() {
+            Ok(state) => break state,
+            Err(e) => {
+                tracing::warn!("{e:#}; retrying");
+                thread::sleep(STARTUP_RETRY);
+            }
+        }
+    };
     let bar = Arc::new(Mutex::new(Bar {
         widget: Widget::new(&initial, config.step()),
         lamp: initial,
@@ -156,9 +177,9 @@ fn run() -> Result<()> {
 ///
 /// The order matters: the local state absorbs the change and the bar is told
 /// *before* the HTTP request goes out, so a scroll moves the pill at the speed of
-/// the scroll rather than at the speed of the network. A failed request means the
-/// pill is briefly optimistic about a lamp that did not move, which the next read
-/// corrects — the alternative is a widget that feels broken every time.
+/// the scroll rather than at the speed of the network. A request that still
+/// fails after its retries re-reads the lamp, so the pill does not stay
+/// optimistic about a lamp that did not move.
 fn handle(
     command: Command,
     config: &Config,
@@ -166,53 +187,95 @@ fn handle(
     bar: &Mutex<Bar>,
     subscribers: &Subscribers,
 ) {
-    let mut bar = bar.lock().unwrap();
+    let call = {
+        let mut bar = bar.lock().unwrap();
 
-    let Some(change) = bar.widget.apply(command) else {
-        // A mode toggle, or a scroll on an off pill. Publish anyway: the first
-        // changes what the pill shows without touching the lamp.
+        let Some(change) = bar.widget.apply(command) else {
+            // A mode toggle, or a scroll on an off pill. Publish anyway: the first
+            // changes what the pill shows without touching the lamp.
+            subscribers.publish(bar.snapshot());
+            return;
+        };
+
+        bar.lamp.apply(change, lamp.min_brightness());
         subscribers.publish(bar.snapshot());
-        return;
+        bar.lamp.call_for(change)
     };
 
-    bar.lamp.apply(change, lamp.min_brightness());
-    subscribers.publish(bar.snapshot());
-
-    if let Some(call) = bar.lamp.call_for(change)
-        && let Err(e) = lamp.send(call)
+    if let Some(call) = call
+        && let Err(e) = send(lamp, call)
     {
         tracing::warn!("{e:#}");
+        match lamp.state() {
+            Ok(fresh) => sync(bar, fresh, subscribers),
+            Err(e) => tracing::warn!("{e:#}"),
+        }
+        return;
     }
 
     // A lamp that was just switched on reports no brightness until it has
     // reached one, so the pill says `loading` until a read comes back with a
     // number.
-    if bar.lamp.is_settling() {
-        settle(config, lamp, &mut bar, subscribers);
+    let settling = bar.lock().unwrap().lamp.is_settling();
+    if settling {
+        settle(config, lamp, bar, subscribers);
     }
 }
 
-/// Re-read the lamp until it reports the value the pill wants, or until the
-/// configured settle timeout.
-fn settle(config: &Config, lamp: &Lamp, bar: &mut Bar, subscribers: &Subscribers) {
-    let deadline = Instant::now() + config.settle_timeout();
+fn send(lamp: &Lamp, call: Call) -> Result<()> {
+    let mut result = lamp.send(call);
+    let mut backoff = SEND_BACKOFF;
+    for _ in 1..SEND_ATTEMPTS {
+        let Err(e) = &result else { break };
+        tracing::warn!("{e:#}; retrying");
+        thread::sleep(backoff);
+        backoff *= 2;
+        result = lamp.send(call);
+    }
+    result
+}
 
-    while bar.lamp.is_settling() {
+/// Take the lamp's word for it, on/off included, and publish.
+fn sync(bar: &Mutex<Bar>, fresh: LampState, subscribers: &Subscribers) {
+    let mut bar = bar.lock().unwrap();
+    bar.widget.sync(&fresh);
+    bar.lamp = fresh;
+    subscribers.publish(bar.snapshot());
+}
+
+/// Re-read a lamp that was just switched on until it reports a brightness,
+/// asking again while it still reads as off. At the timeout the pill falls back
+/// to whatever the lamp last said rather than staying on `loading`.
+fn settle(config: &Config, lamp: &Lamp, bar: &Mutex<Bar>, subscribers: &Subscribers) {
+    let deadline = Instant::now() + config.settle_timeout();
+    let mut asked = Instant::now();
+    let mut last = None;
+
+    loop {
         match lamp.state() {
-            Ok(fresh) => {
-                bar.lamp = fresh;
-                subscribers.publish(bar.snapshot());
+            Ok(fresh) if fresh.status == Status::On && !fresh.is_settling() => {
+                return sync(bar, fresh, subscribers);
             }
-            Err(e) => {
-                tracing::warn!("{e:#}");
-                break;
-            }
+            Ok(fresh) => last = Some(fresh),
+            Err(e) => tracing::warn!("{e:#}"),
         }
 
-        if !bar.lamp.is_settling() || Instant::now() >= deadline {
+        let now = Instant::now();
+        if now >= deadline {
             break;
         }
+        if last.is_some_and(|l: LampState| l.status == Status::Off) && now - asked >= RESEND_AFTER {
+            if let Err(e) = lamp.send(Call::On) {
+                tracing::warn!("{e:#}");
+            }
+            asked = now;
+        }
         thread::sleep(config.settle_poll_interval());
+    }
+
+    tracing::warn!("no brightness reported within the settle timeout");
+    if let Some(fresh) = last {
+        sync(bar, fresh, subscribers);
     }
 }
 

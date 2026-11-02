@@ -93,8 +93,8 @@ pub struct Config {
     #[serde(default = "default_settle_poll_ms")]
     pub settle_poll_ms: u64,
 
-    /// How long to keep asking before giving up and leaving the pill on
-    /// `loading` until the next command.
+    /// How long to keep asking (and re-sending `turn_on` while the lamp reads
+    /// as off) before the pill falls back to whatever the lamp last reported.
     ///
     /// The binary this replaces had no ceiling here: it polled every 100 ms
     /// until Home Assistant said the lamp was on, which against an unreachable
@@ -117,7 +117,7 @@ fn default_settle_poll_ms() -> u64 {
     100
 }
 fn default_settle_timeout_ms() -> u64 {
-    3_000
+    10_000
 }
 fn default_request_timeout() -> u64 {
     crate::api::REQUEST_TIMEOUT.as_secs()
